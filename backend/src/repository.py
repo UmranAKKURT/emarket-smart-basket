@@ -1,0 +1,652 @@
+from __future__ import annotations
+
+from typing import Any, Iterable
+
+try:
+    from src.db_helper import EMarketDBHelper
+except ModuleNotFoundError:
+    from db_helper import EMarketDBHelper
+
+
+class RepositoryError(Exception):
+    """
+    Repository katmanında oluşan özel hatalar için kullanılır.
+    """
+
+    pass
+
+
+class BaseRepository:
+    """
+    Tüm repository sınıfları için ortak temel sınıf.
+
+    Bu sınıf veritabanı bağlantısını doğrudan oluşturmaz.
+    Bağlantı yönetimini EMarketDBHelper sınıfından alır.
+    Böylece repository katmanı db_helper katmanına gevşek bağlı kalır.
+    """
+
+    def __init__(self, db_helper: EMarketDBHelper | None = None) -> None:
+        self.db_helper = db_helper or EMarketDBHelper()
+
+    @staticmethod
+    def _row_to_dict(row: Any) -> dict[str, Any] | None:
+        if row is None:
+            return None
+
+        return dict(row)
+
+    @staticmethod
+    def _rows_to_dicts(rows: Iterable[Any]) -> list[dict[str, Any]]:
+        return [dict(row) for row in rows]
+
+
+class ProductRepository(BaseRepository):
+    """
+    Ürünlerle ilgili veritabanı sorgularını yöneten repository sınıfı.
+    """
+
+    def get_all_products(self) -> list[dict[str, Any]]:
+        """
+        Tüm ürünleri kategori ve ürün adına göre sıralı getirir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    id,
+                    name,
+                    price,
+                    category,
+                    emoji
+                FROM products
+                ORDER BY category ASC, name ASC;
+                """
+            ).fetchall()
+
+        return self._rows_to_dicts(rows)
+
+    def get_product_by_id(self, product_id: int) -> dict[str, Any] | None:
+        """
+        Ürün id değerine göre tek ürün getirir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    id,
+                    name,
+                    price,
+                    category,
+                    emoji
+                FROM products
+                WHERE id = ?;
+                """,
+                (product_id,),
+            ).fetchone()
+
+        return self._row_to_dict(row)
+
+    def get_product_by_name(self, product_name: str) -> dict[str, Any] | None:
+        """
+        Ürün adına göre tek ürün getirir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    id,
+                    name,
+                    price,
+                    category,
+                    emoji
+                FROM products
+                WHERE name = ?;
+                """,
+                (product_name,),
+            ).fetchone()
+
+        return self._row_to_dict(row)
+
+    def get_products_by_category(self, category: str) -> list[dict[str, Any]]:
+        """
+        Belirli bir kategoriye ait ürünleri getirir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    id,
+                    name,
+                    price,
+                    category,
+                    emoji
+                FROM products
+                WHERE category = ?
+                ORDER BY name ASC;
+                """,
+                (category,),
+            ).fetchall()
+
+        return self._rows_to_dicts(rows)
+
+    def get_categories(self) -> list[str]:
+        """
+        Sistemde bulunan ürün kategorilerini getirir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT DISTINCT category
+                FROM products
+                ORDER BY category ASC;
+                """
+            ).fetchall()
+
+        return [row["category"] for row in rows]
+
+    def search_products(self, keyword: str) -> list[dict[str, Any]]:
+        """
+        Ürün adı veya kategori içinde arama yapar.
+        """
+
+        search_pattern = f"%{keyword.strip()}%"
+
+        with self.db_helper.get_connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    id,
+                    name,
+                    price,
+                    category,
+                    emoji
+                FROM products
+                WHERE name LIKE ? OR category LIKE ?
+                ORDER BY category ASC, name ASC;
+                """,
+                (search_pattern, search_pattern),
+            ).fetchall()
+
+        return self._rows_to_dicts(rows)
+
+    def get_products_by_ids(self, product_ids: list[int]) -> list[dict[str, Any]]:
+        """
+        Birden fazla ürün id değerine göre ürünleri getirir.
+
+        Bu metot ileride sepetteki ürün detaylarını göstermek için kullanılabilir.
+        """
+
+        if not product_ids:
+            return []
+
+        placeholders = ", ".join("?" for _ in product_ids)
+
+        with self.db_helper.get_connection() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT
+                    id,
+                    name,
+                    price,
+                    category,
+                    emoji
+                FROM products
+                WHERE id IN ({placeholders})
+                ORDER BY category ASC, name ASC;
+                """,
+                tuple(product_ids),
+            ).fetchall()
+
+        return self._rows_to_dicts(rows)
+
+    def count_products(self) -> int:
+        """
+        Toplam ürün sayısını getirir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS total
+                FROM products;
+                """
+            ).fetchone()
+
+        return int(row["total"])
+
+
+class OrderRepository(BaseRepository):
+    """
+    Sipariş ve sipariş kalemleriyle ilgili sorguları yöneten repository sınıfı.
+    """
+
+    def get_all_orders(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        """
+        Siparişleri sayfalama mantığıyla getirir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    id,
+                    user_id,
+                    created_at
+                FROM orders
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?;
+                """,
+                (limit, offset),
+            ).fetchall()
+
+        return self._rows_to_dicts(rows)
+
+    def get_order_by_id(self, order_id: int) -> dict[str, Any] | None:
+        """
+        Sipariş id değerine göre tek sipariş getirir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    id,
+                    user_id,
+                    created_at
+                FROM orders
+                WHERE id = ?;
+                """,
+                (order_id,),
+            ).fetchone()
+
+        return self._row_to_dict(row)
+
+    def get_order_items(self, order_id: int) -> list[dict[str, Any]]:
+        """
+        Bir siparişin içindeki ürünleri detaylı şekilde getirir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    oi.order_id,
+                    oi.product_id,
+                    p.name AS product_name,
+                    p.category,
+                    p.price,
+                    p.emoji,
+                    oi.quantity,
+                    ROUND(p.price * oi.quantity, 2) AS line_total
+                FROM order_items AS oi
+                INNER JOIN products AS p
+                    ON p.id = oi.product_id
+                WHERE oi.order_id = ?
+                ORDER BY p.category ASC, p.name ASC;
+                """,
+                (order_id,),
+            ).fetchall()
+
+        return self._rows_to_dicts(rows)
+
+    def get_order_basket_product_names(self, order_id: int) -> list[str]:
+        """
+        Bir siparişteki ürün adlarını liste olarak getirir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT p.name
+                FROM order_items AS oi
+                INNER JOIN products AS p
+                    ON p.id = oi.product_id
+                WHERE oi.order_id = ?
+                ORDER BY p.name ASC;
+                """,
+                (order_id,),
+            ).fetchall()
+
+        return [row["name"] for row in rows]
+
+    def get_all_order_baskets(self) -> dict[int, list[int]]:
+        """
+        Tüm siparişleri rule mining için sepet formatında getirir.
+
+        Dönüş formatı:
+        {
+            1: [1, 7, 27, 30],
+            2: [1, 7, 27, 30],
+            ...
+        }
+
+        Burada listelerde ürün id değerleri bulunur.
+        Bu metot 3. günde rule_miner.py tarafından kullanılacak.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    oi.order_id,
+                    oi.product_id
+                FROM order_items AS oi
+                INNER JOIN orders AS o
+                    ON o.id = oi.order_id
+                ORDER BY oi.order_id ASC, oi.product_id ASC;
+                """
+            ).fetchall()
+
+        baskets: dict[int, list[int]] = {}
+
+        for row in rows:
+            order_id = row["order_id"]
+            product_id = row["product_id"]
+
+            if order_id not in baskets:
+                baskets[order_id] = []
+
+            baskets[order_id].append(product_id)
+
+        return baskets
+
+    def get_all_order_basket_names(self) -> dict[int, list[str]]:
+        """
+        Tüm siparişleri ürün adlarıyla birlikte getirir.
+
+        Bu metot test ve kontrol amacıyla faydalıdır.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    oi.order_id,
+                    p.name AS product_name
+                FROM order_items AS oi
+                INNER JOIN products AS p
+                    ON p.id = oi.product_id
+                ORDER BY oi.order_id ASC, p.name ASC;
+                """
+            ).fetchall()
+
+        baskets: dict[int, list[str]] = {}
+
+        for row in rows:
+            order_id = row["order_id"]
+            product_name = row["product_name"]
+
+            if order_id not in baskets:
+                baskets[order_id] = []
+
+            baskets[order_id].append(product_name)
+
+        return baskets
+
+    def count_orders(self) -> int:
+        """
+        Toplam sipariş sayısını getirir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS total
+                FROM orders;
+                """
+            ).fetchone()
+
+        return int(row["total"])
+
+    def count_order_items(self) -> int:
+        """
+        Toplam sipariş kalemi sayısını getirir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS total
+                FROM order_items;
+                """
+            ).fetchone()
+
+        return int(row["total"])
+
+
+class AssociationRuleRepository(BaseRepository):
+    """
+    Association rule kayıtlarıyla ilgili veritabanı işlemlerini yöneten sınıf.
+
+    Not:
+    Bu sınıf kural hesaplamaz.
+    Sadece association_rules tablosunu okur veya yazar.
+    Kural hesaplama işlemi 3. günde rule_miner.py içinde yapılacak.
+    """
+
+    def get_all_rules(self) -> list[dict[str, Any]]:
+        """
+        Tüm association rule kayıtlarını ürün adlarıyla birlikte getirir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    ar.id,
+                    ar.antecedent_product_id,
+                    p1.name AS antecedent_name,
+                    ar.consequent_product_id,
+                    p2.name AS consequent_name,
+                    ar.support,
+                    ar.confidence,
+                    ar.lift,
+                    ar.context_message,
+                    ar.created_at
+                FROM association_rules AS ar
+                INNER JOIN products AS p1
+                    ON p1.id = ar.antecedent_product_id
+                INNER JOIN products AS p2
+                    ON p2.id = ar.consequent_product_id
+                ORDER BY ar.confidence DESC, ar.lift DESC;
+                """
+            ).fetchall()
+
+        return self._rows_to_dicts(rows)
+
+    def get_rules_by_antecedent(self, antecedent_product_id: int) -> list[dict[str, Any]]:
+        """
+        Belirli bir üründen çıkan öneri kurallarını getirir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    ar.id,
+                    ar.antecedent_product_id,
+                    p1.name AS antecedent_name,
+                    ar.consequent_product_id,
+                    p2.name AS consequent_name,
+                    p2.price AS consequent_price,
+                    p2.category AS consequent_category,
+                    p2.emoji AS consequent_emoji,
+                    ar.support,
+                    ar.confidence,
+                    ar.lift,
+                    ar.context_message,
+                    ar.created_at
+                FROM association_rules AS ar
+                INNER JOIN products AS p1
+                    ON p1.id = ar.antecedent_product_id
+                INNER JOIN products AS p2
+                    ON p2.id = ar.consequent_product_id
+                WHERE ar.antecedent_product_id = ?
+                ORDER BY ar.confidence DESC, ar.lift DESC;
+                """,
+                (antecedent_product_id,),
+            ).fetchall()
+
+        return self._rows_to_dicts(rows)
+
+    def insert_rule(
+        self,
+        antecedent_product_id: int,
+        consequent_product_id: int,
+        support: float,
+        confidence: float,
+        lift: float,
+        context_message: str,
+    ) -> None:
+        """
+        Tek bir association rule kaydını ekler veya günceller.
+        """
+
+        try:
+            with self.db_helper.get_connection() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO association_rules
+                        (
+                            antecedent_product_id,
+                            consequent_product_id,
+                            support,
+                            confidence,
+                            lift,
+                            context_message
+                        )
+                    VALUES
+                        (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(antecedent_product_id, consequent_product_id)
+                    DO UPDATE SET
+                        support = excluded.support,
+                        confidence = excluded.confidence,
+                        lift = excluded.lift,
+                        context_message = excluded.context_message,
+                        created_at = CURRENT_TIMESTAMP;
+                    """,
+                    (
+                        antecedent_product_id,
+                        consequent_product_id,
+                        support,
+                        confidence,
+                        lift,
+                        context_message,
+                    ),
+                )
+
+                connection.commit()
+
+        except Exception as exc:
+            raise RepositoryError(f"Association rule eklenirken hata oluştu: {exc}") from exc
+
+    def insert_many_rules(self, rules: list[dict[str, Any]]) -> None:
+        """
+        Birden fazla association rule kaydını ekler veya günceller.
+
+        Bu metot 3. günde rule_miner.py tarafından kullanılacak.
+        """
+
+        if not rules:
+            return
+
+        try:
+            with self.db_helper.get_connection() as connection:
+                connection.executemany(
+                    """
+                    INSERT INTO association_rules
+                        (
+                            antecedent_product_id,
+                            consequent_product_id,
+                            support,
+                            confidence,
+                            lift,
+                            context_message
+                        )
+                    VALUES
+                        (
+                            :antecedent_product_id,
+                            :consequent_product_id,
+                            :support,
+                            :confidence,
+                            :lift,
+                            :context_message
+                        )
+                    ON CONFLICT(antecedent_product_id, consequent_product_id)
+                    DO UPDATE SET
+                        support = excluded.support,
+                        confidence = excluded.confidence,
+                        lift = excluded.lift,
+                        context_message = excluded.context_message,
+                        created_at = CURRENT_TIMESTAMP;
+                    """,
+                    rules,
+                )
+
+                connection.commit()
+
+        except Exception as exc:
+            raise RepositoryError(f"Association rule kayıtları eklenirken hata oluştu: {exc}") from exc
+
+    def clear_rules(self) -> None:
+        """
+        Association rule tablosundaki tüm kayıtları siler.
+
+        Rule mining yeniden çalıştırıldığında eski kuralları temizlemek için kullanılabilir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            connection.execute(
+                """
+                DELETE FROM association_rules;
+                """
+            )
+            connection.commit()
+
+    def count_rules(self) -> int:
+        """
+        Toplam association rule sayısını getirir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS total
+                FROM association_rules;
+                """
+            ).fetchone()
+
+        return int(row["total"])
+
+
+if __name__ == "__main__":
+    db_helper = EMarketDBHelper()
+
+    product_repository = ProductRepository(db_helper)
+    order_repository = OrderRepository(db_helper)
+    rule_repository = AssociationRuleRepository(db_helper)
+
+    print("Repository katmanı başarıyla çalıştı.")
+    print("-" * 50)
+
+    print(f"Toplam ürün sayısı: {product_repository.count_products()}")
+    print(f"Toplam sipariş sayısı: {order_repository.count_orders()}")
+    print(f"Toplam sipariş kalemi sayısı: {order_repository.count_order_items()}")
+    print(f"Toplam association rule sayısı: {rule_repository.count_rules()}")
+
+    print("-" * 50)
+
+    print("Kategoriler:")
+    for category in product_repository.get_categories():
+        print(f"- {category}")
+
+    print("-" * 50)
+
+    print("1 numaralı sipariş sepeti:")
+    for product_name in order_repository.get_order_basket_product_names(order_id=1):
+        print(f"- {product_name}")
