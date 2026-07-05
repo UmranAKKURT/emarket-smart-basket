@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class ProductResponse(BaseModel):
@@ -23,6 +23,144 @@ class CategoryListResponse(BaseModel):
     """
 
     categories: list[str]
+
+
+class OrderItemRequest(BaseModel):
+    product_id: int = Field(gt=0)
+    quantity: int = Field(ge=1, le=50)
+
+
+class CreateOrderRequest(BaseModel):
+    user_id: int = Field(gt=0)
+    items: list[OrderItemRequest] = Field(min_length=1)
+
+
+class OrderItemResponse(BaseModel):
+    product_id: int
+    product_name: str
+    emoji: str
+    price: float
+    quantity: int
+    line_total: float
+
+
+class CreateOrderResponse(BaseModel):
+    order_id: int
+    user_id: int
+    created_at: str
+    items: list[OrderItemResponse]
+    total_amount: float
+    rule_rebuild_scheduled: bool
+    message: str
+
+
+class OrderHistoryItemResponse(BaseModel):
+    order_id: int
+    user_id: int
+    created_at: str
+    item_count: int
+    total_quantity: int
+    total_amount: float
+
+
+class OrderHistoryResponse(BaseModel):
+    user_id: int
+    total: int
+    limit: int
+    offset: int
+    orders: list[OrderHistoryItemResponse]
+
+
+class OrderDetailResponse(BaseModel):
+    order_id: int
+    user_id: int
+    created_at: str
+    items: list[OrderItemResponse]
+    total_amount: float
+
+
+class AnalyticsSummaryResponse(BaseModel):
+    total_orders: int
+    total_revenue: float
+    total_units_sold: int
+    average_order_value: float
+    unique_customers: int
+
+
+class TopProductResponse(BaseModel):
+    product_id: int
+    product_name: str
+    emoji: str
+    category: str
+    total_quantity: int
+    total_revenue: float
+    order_count: int
+
+
+class CategorySalesResponse(BaseModel):
+    category: str
+    total_quantity: int
+    total_revenue: float
+    order_count: int
+    revenue_share: float
+
+
+class DailySalesResponse(BaseModel):
+    date: str
+    order_count: int
+    total_quantity: int
+    total_revenue: float
+
+
+class StrongRuleResponse(BaseModel):
+    rule_id: int
+    antecedent_product_id: int
+    antecedent_name: str
+    antecedent_emoji: str
+    consequent_product_id: int
+    consequent_name: str
+    consequent_emoji: str
+    support: float
+    confidence: float
+    lift: float
+    context_message: str
+
+
+class AnalyticsDashboardResponse(BaseModel):
+    summary: AnalyticsSummaryResponse
+    top_products: list[TopProductResponse]
+    category_sales: list[CategorySalesResponse]
+    daily_sales: list[DailySalesResponse]
+    strongest_rules: list[StrongRuleResponse]
+
+
+class AdminLoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+
+
+class AdminUserResponse(BaseModel):
+    id: int
+    email: EmailStr
+    role: str
+    is_active: bool
+    created_at: str
+    last_login_at: str | None
+
+
+class AdminLoginResponse(BaseModel):
+    message: str
+    user: AdminUserResponse
+    expires_at: str
+
+
+class AdminMeResponse(BaseModel):
+    authenticated: bool
+    user: AdminUserResponse
+
+
+class AdminLogoutResponse(BaseModel):
+    message: str
 
 
 class RecommendationRequest(BaseModel):

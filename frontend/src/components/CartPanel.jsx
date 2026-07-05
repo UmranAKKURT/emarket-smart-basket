@@ -7,7 +7,9 @@ function CartPanel({
   onIncreaseQuantity,
   onDecreaseQuantity,
   onRemoveFromCart,
-  onClearCart
+  onClearCart,
+  onCheckout,
+  isCheckoutLoading
 }) {
   return (
     <section className="cart-panel" aria-label="Sepet">
@@ -46,6 +48,17 @@ function CartPanel({
         <span>Toplam</span>
         <strong>{formatCurrency(total)}</strong>
       </div>
+
+      <button
+        className="checkout-button"
+        type="button"
+        disabled={cart.length === 0 || isCheckoutLoading}
+        onClick={onCheckout}
+      >
+        {isCheckoutLoading
+          ? "Sipariş oluşturuluyor..."
+          : "Siparişi Tamamla"}
+      </button>
     </section>
   );
 }

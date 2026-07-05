@@ -3,15 +3,51 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from src.analytics_repository import AnalyticsRepository
+from src.analytics_service import (
+    AnalyticsService,
+    AnalyticsServiceError,
+    InvalidAnalyticsParameterError,
+)
+from src.auth_dependencies import get_current_user, require_admin, require_admin_csrf
+from src.auth_repository import AuthRepository
+from src.auth_service import (
+    AccountLockedError,
+    AuthService,
+    AuthServiceError,
+    CsrfValidationError,
+    ForbiddenError,
+    InactiveAccountError,
+    InvalidCredentialsError,
+    UnauthorizedError,
+    WeakPasswordError,
+)
 from src.db_helper import EMarketDBHelper
 from src.engine import (
     BasketValidationError,
     RecommendationEngine,
     RecommendationEngineError,
+)
+from src.order_service import (
+    InvalidOrderError,
+    OrderNotFoundError,
+    OrderService,
+    OrderServiceError,
+    ProductNotFoundError,
 )
 from src.repository import (
     AssociationRuleRepository,
@@ -20,15 +56,32 @@ from src.repository import (
     RepositoryError,
 )
 from src.rule_miner import AssociationRuleMiner, RuleMiningError
+from src.security import Security
+from src.settings import Settings
 from src.schemas import (
     APIInfoResponse,
+    AdminLoginRequest,
+    AdminLoginResponse,
+    AdminLogoutResponse,
+    AdminMeResponse,
+    AdminUserResponse,
+    AnalyticsDashboardResponse,
+    AnalyticsSummaryResponse,
+    CategorySalesResponse,
     CategoryListResponse,
+    CreateOrderRequest,
+    CreateOrderResponse,
+    DailySalesResponse,
     HealthResponse,
+    OrderDetailResponse,
+    OrderHistoryResponse,
     ProductResponse,
     RecommendationListResponse,
     RecommendationRequest,
     RecommendationResponse,
     RuleRebuildResponse,
+    StrongRuleResponse,
+    TopProductResponse,
 )
 
 
@@ -40,12 +93,30 @@ class ApplicationContainer:
     Tüm bağımlılıklar bu container üzerinden alınır.
     """
 
-    def __init__(self) -> None:
-        self.db_helper = EMarketDBHelper()
+    def __init__(
+        self,
+        db_helper: EMarketDBHelper | None = None,
+        settings: Settings | None = None,
+    ) -> None:
+        self.db_helper = db_helper or EMarketDBHelper()
+        self.settings = settings or Settings.from_env()
+        self.security = Security()
+        self.auth_repository = AuthRepository(self.db_helper)
+        self.auth_service = AuthService(
+            self.auth_repository,
+            self.security,
+            self.settings,
+        )
 
         self.product_repository = ProductRepository(self.db_helper)
         self.order_repository = OrderRepository(self.db_helper)
         self.rule_repository = AssociationRuleRepository(self.db_helper)
+        self.analytics_repository = AnalyticsRepository(self.db_helper)
+        self.analytics_service = AnalyticsService(self.analytics_repository)
+        self.order_service = OrderService(
+            product_repository=self.product_repository,
+            order_repository=self.order_repository,
+        )
 
         self.rule_miner = AssociationRuleMiner(
             product_repository=self.product_repository,
@@ -89,6 +160,87 @@ ContainerDependency = Annotated[
 
 
 router = APIRouter(prefix="/api/v1")
+
+
+@router.post(
+    "/auth/admin/login",
+    response_model=AdminLoginResponse,
+    tags=["Admin Auth"],
+)
+def admin_login(
+    request_body: AdminLoginRequest,
+    request: Request,
+    response: Response,
+    container: ContainerDependency,
+) -> AdminLoginResponse:
+    result = container.auth_service.login(
+        email=str(request_body.email),
+        password=request_body.password,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request.client.host if request.client else None,
+    )
+    max_age = container.settings.session_ttl_minutes * 60
+    cookie_options = {
+        "secure": container.settings.cookie_secure,
+        "samesite": "lax",
+        "path": "/",
+        "max_age": max_age,
+    }
+    response.set_cookie(
+        container.settings.session_cookie_name,
+        result["session_token"],
+        httponly=True,
+        **cookie_options,
+    )
+    response.set_cookie(
+        container.settings.csrf_cookie_name,
+        result["csrf_token"],
+        httponly=False,
+        **cookie_options,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return AdminLoginResponse(
+        message="Admin girişi başarılı.",
+        user=AdminUserResponse(**result["user"]),
+        expires_at=result["expires_at"],
+    )
+
+
+@router.get(
+    "/auth/admin/me",
+    response_model=AdminMeResponse,
+    tags=["Admin Auth"],
+)
+def admin_me(
+    response: Response,
+    current_user: Annotated[dict, Depends(get_current_user)],
+) -> AdminMeResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return AdminMeResponse(
+        authenticated=True,
+        user=AdminUserResponse(**current_user),
+    )
+
+
+@router.post(
+    "/auth/admin/logout",
+    response_model=AdminLogoutResponse,
+    tags=["Admin Auth"],
+)
+def admin_logout(
+    request: Request,
+    response: Response,
+    container: ContainerDependency,
+    current_user: Annotated[dict, Depends(require_admin_csrf)],
+) -> AdminLogoutResponse:
+    container.auth_service.logout(
+        request.cookies.get(container.settings.session_cookie_name)
+    )
+    response.delete_cookie(container.settings.session_cookie_name, path="/")
+    response.delete_cookie(container.settings.csrf_cookie_name, path="/")
+    response.headers["Cache-Control"] = "no-store"
+    return AdminLogoutResponse(message="Admin oturumu kapatıldı.")
 
 
 @router.get(
@@ -201,6 +353,75 @@ def get_categories(
     return CategoryListResponse(categories=categories)
 
 
+@router.get(
+    "/orders",
+    response_model=OrderHistoryResponse,
+    tags=["Orders"],
+)
+def get_order_history(
+    container: ContainerDependency,
+    user_id: Annotated[int, Query(gt=0)],
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> OrderHistoryResponse:
+    history = container.order_service.get_user_orders(
+        user_id=user_id,
+        limit=limit,
+        offset=offset,
+    )
+    return OrderHistoryResponse(**history)
+
+
+@router.get(
+    "/orders/{order_id}",
+    response_model=OrderDetailResponse,
+    tags=["Orders"],
+)
+def get_order_detail(
+    order_id: int,
+    container: ContainerDependency,
+    user_id: Annotated[int, Query(gt=0)],
+) -> OrderDetailResponse:
+    detail = container.order_service.get_user_order_detail(
+        user_id=user_id,
+        order_id=order_id,
+    )
+    return OrderDetailResponse(**detail)
+
+
+@router.post(
+    "/orders",
+    response_model=CreateOrderResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Orders"],
+)
+def create_order(
+    request_body: CreateOrderRequest,
+    background_tasks: BackgroundTasks,
+    container: ContainerDependency,
+) -> CreateOrderResponse:
+    """Siparişi kaydeder ve association rule yenilemeyi arka plana planlar.
+
+    Production ortamında bu işlem Celery, RQ veya ayrı bir job queue ile
+    periyodik çalıştırılabilir. Bu demoda FastAPI BackgroundTasks kullanılır.
+    """
+
+    summary = container.order_service.create_order(
+        user_id=request_body.user_id,
+        items=[item.model_dump() for item in request_body.items],
+    )
+    background_tasks.add_task(
+        container.rule_miner.mine_and_save_rules,
+        clear_existing=True,
+    )
+
+    return CreateOrderResponse(
+        **summary,
+        rule_rebuild_scheduled=True,
+        message="Siparişiniz başarıyla oluşturuldu.",
+    )
+
+
 @router.post(
     "/recommendations",
     response_model=RecommendationListResponse,
@@ -231,10 +452,114 @@ def get_recommendations(
     )
 
 
+# Demo yönetim endpointleri production ortamında kimlik doğrulamayla korunmalıdır.
+@router.get(
+    "/admin/analytics/dashboard",
+    response_model=AnalyticsDashboardResponse,
+    tags=["Admin Analytics"],
+    dependencies=[Depends(require_admin)],
+)
+def get_analytics_dashboard(
+    container: ContainerDependency,
+    top_product_limit: Annotated[int, Query(ge=1, le=20)] = 5,
+    rule_limit: Annotated[int, Query(ge=1, le=50)] = 10,
+    days: Annotated[int, Query(ge=7, le=365)] = 30,
+) -> AnalyticsDashboardResponse:
+    return AnalyticsDashboardResponse(
+        summary=container.analytics_service.get_dashboard_summary(),
+        top_products=container.analytics_service.get_top_products(
+            top_product_limit
+        ),
+        category_sales=container.analytics_service.get_category_sales(),
+        daily_sales=container.analytics_service.get_daily_sales(days),
+        strongest_rules=container.analytics_service.get_strongest_rules(
+            rule_limit
+        ),
+    )
+
+
+@router.get(
+    "/admin/analytics/summary",
+    response_model=AnalyticsSummaryResponse,
+    tags=["Admin Analytics"],
+    dependencies=[Depends(require_admin)],
+)
+def get_analytics_summary(
+    container: ContainerDependency,
+) -> AnalyticsSummaryResponse:
+    return AnalyticsSummaryResponse(
+        **container.analytics_service.get_dashboard_summary()
+    )
+
+
+@router.get(
+    "/admin/analytics/top-products",
+    response_model=list[TopProductResponse],
+    tags=["Admin Analytics"],
+    dependencies=[Depends(require_admin)],
+)
+def get_top_products_analytics(
+    container: ContainerDependency,
+    limit: Annotated[int, Query(ge=1, le=20)] = 5,
+) -> list[TopProductResponse]:
+    return [
+        TopProductResponse(**product)
+        for product in container.analytics_service.get_top_products(limit)
+    ]
+
+
+@router.get(
+    "/admin/analytics/categories",
+    response_model=list[CategorySalesResponse],
+    tags=["Admin Analytics"],
+    dependencies=[Depends(require_admin)],
+)
+def get_category_sales_analytics(
+    container: ContainerDependency,
+) -> list[CategorySalesResponse]:
+    return [
+        CategorySalesResponse(**category)
+        for category in container.analytics_service.get_category_sales()
+    ]
+
+
+@router.get(
+    "/admin/analytics/daily-sales",
+    response_model=list[DailySalesResponse],
+    tags=["Admin Analytics"],
+    dependencies=[Depends(require_admin)],
+)
+def get_daily_sales_analytics(
+    container: ContainerDependency,
+    days: Annotated[int, Query(ge=7, le=365)] = 30,
+) -> list[DailySalesResponse]:
+    return [
+        DailySalesResponse(**daily_sale)
+        for daily_sale in container.analytics_service.get_daily_sales(days)
+    ]
+
+
+@router.get(
+    "/admin/analytics/rules",
+    response_model=list[StrongRuleResponse],
+    tags=["Admin Analytics"],
+    dependencies=[Depends(require_admin)],
+)
+def get_strongest_rules_analytics(
+    container: ContainerDependency,
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+) -> list[StrongRuleResponse]:
+    return [
+        StrongRuleResponse(**rule)
+        for rule in container.analytics_service.get_strongest_rules(limit)
+    ]
+
+
 @router.post(
     "/admin/rules/rebuild",
     response_model=RuleRebuildResponse,
     tags=["Admin"],
+    dependencies=[Depends(require_admin_csrf)],
 )
 def rebuild_association_rules(
     container: ContainerDependency,
@@ -260,6 +585,106 @@ def register_exception_handlers(app: FastAPI) -> None:
     """
     Uygulamadaki özel hata türleri için HTTP yanıtlarını tanımlar.
     """
+
+    def auth_response(status_code: int, detail: str) -> JSONResponse:
+        headers = {"WWW-Authenticate": "Cookie"} if status_code == 401 else None
+        return JSONResponse(
+            status_code=status_code,
+            content={"detail": detail},
+            headers=headers,
+        )
+
+    @app.exception_handler(InvalidCredentialsError)
+    async def invalid_credentials_handler(request: Request, exception: InvalidCredentialsError) -> JSONResponse:
+        return auth_response(401, str(exception))
+
+    @app.exception_handler(UnauthorizedError)
+    async def unauthorized_handler(request: Request, exception: UnauthorizedError) -> JSONResponse:
+        return auth_response(401, str(exception))
+
+    @app.exception_handler(ForbiddenError)
+    async def forbidden_handler(request: Request, exception: ForbiddenError) -> JSONResponse:
+        return auth_response(403, str(exception))
+
+    @app.exception_handler(CsrfValidationError)
+    async def csrf_handler(request: Request, exception: CsrfValidationError) -> JSONResponse:
+        return auth_response(403, str(exception))
+
+    @app.exception_handler(AccountLockedError)
+    async def locked_handler(request: Request, exception: AccountLockedError) -> JSONResponse:
+        return auth_response(429, str(exception))
+
+    @app.exception_handler(InactiveAccountError)
+    async def inactive_handler(request: Request, exception: InactiveAccountError) -> JSONResponse:
+        return auth_response(403, "Hesap aktif değil.")
+
+    @app.exception_handler(WeakPasswordError)
+    async def weak_password_handler(request: Request, exception: WeakPasswordError) -> JSONResponse:
+        return auth_response(422, str(exception))
+
+    @app.exception_handler(AuthServiceError)
+    async def auth_service_handler(request: Request, exception: AuthServiceError) -> JSONResponse:
+        return auth_response(500, "Kimlik doğrulama işlemi tamamlanamadı.")
+
+    @app.exception_handler(InvalidAnalyticsParameterError)
+    async def invalid_analytics_parameter_exception_handler(
+        request: Request,
+        exception: InvalidAnalyticsParameterError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": str(exception)},
+        )
+
+    @app.exception_handler(AnalyticsServiceError)
+    async def analytics_service_exception_handler(
+        request: Request,
+        exception: AnalyticsServiceError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(exception)},
+        )
+
+    @app.exception_handler(OrderNotFoundError)
+    async def order_not_found_exception_handler(
+        request: Request,
+        exception: OrderNotFoundError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": str(exception)},
+        )
+
+    @app.exception_handler(InvalidOrderError)
+    async def invalid_order_exception_handler(
+        request: Request,
+        exception: InvalidOrderError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={"detail": str(exception)},
+        )
+
+    @app.exception_handler(ProductNotFoundError)
+    async def product_not_found_exception_handler(
+        request: Request,
+        exception: ProductNotFoundError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": str(exception)},
+        )
+
+    @app.exception_handler(OrderServiceError)
+    async def order_service_exception_handler(
+        request: Request,
+        exception: OrderServiceError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(exception)},
+        )
 
     @app.exception_handler(BasketValidationError)
     async def basket_validation_exception_handler(
@@ -302,12 +727,12 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
 
-def create_app() -> FastAPI:
+def create_app(container: ApplicationContainer | None = None) -> FastAPI:
     """
     FastAPI uygulamasını oluşturan application factory.
     """
 
-    container = ApplicationContainer()
+    container = container or ApplicationContainer()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -327,10 +752,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-        ],
+        allow_origins=list(container.settings.allowed_origins),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

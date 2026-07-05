@@ -48,7 +48,36 @@ class EMarketDBHelper:
             self.create_indexes(connection)
             self.seed_market_data(connection)
             self.seed_order_history(connection)
+            self.migrate_order_items_unit_price(connection)
             connection.commit()
+
+    def migrate_order_items_unit_price(
+        self,
+        connection: sqlite3.Connection,
+    ) -> None:
+        """Sipariş fiyatlarını tarihsel olarak sabitleyen idempotent migration."""
+
+        columns = connection.execute(
+            "PRAGMA table_info(order_items);"
+        ).fetchall()
+        column_names = {column["name"] for column in columns}
+
+        if "unit_price" not in column_names:
+            connection.execute(
+                "ALTER TABLE order_items ADD COLUMN unit_price REAL;"
+            )
+
+        connection.execute(
+            """
+            UPDATE order_items
+            SET unit_price = (
+                SELECT products.price
+                FROM products
+                WHERE products.id = order_items.product_id
+            )
+            WHERE unit_price IS NULL;
+            """
+        )
 
     def create_tables(self, connection: sqlite3.Connection) -> None:
         """
@@ -129,6 +158,40 @@ class EMarketDBHelper:
             """
         )
 
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL CHECK(role IN ('admin', 'customer')),
+                is_active INTEGER NOT NULL DEFAULT 1,
+                failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+                locked_until TEXT NULL,
+                created_at TEXT NOT NULL,
+                last_login_at TEXT NULL
+            );
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                csrf_token_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                last_seen_at TEXT NULL,
+                revoked_at TEXT NULL,
+                user_agent TEXT NULL,
+                ip_address TEXT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            """
+        )
+
     def create_indexes(self, connection: sqlite3.Connection) -> None:
         """
         Sorguların daha hızlı çalışması için temel indexleri oluşturur.
@@ -166,6 +229,28 @@ class EMarketDBHelper:
             """
             CREATE INDEX IF NOT EXISTS idx_rules_antecedent
             ON association_rules(antecedent_product_id);
+            """
+        )
+
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);"
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_admin_sessions_token_hash
+            ON admin_sessions(token_hash);
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_admin_sessions_user_id
+            ON admin_sessions(user_id);
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires_at
+            ON admin_sessions(expires_at);
             """
         )
 

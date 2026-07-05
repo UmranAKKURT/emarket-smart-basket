@@ -1,4 +1,9 @@
-function Header({ searchTerm, onSearchChange, cartItemCount }) {
+function Header({
+  searchTerm,
+  onSearchChange,
+  cartItemCount,
+  onOpenOrders
+}) {
   return (
     <header className="app-header">
       <div className="brand">
@@ -21,9 +26,14 @@ function Header({ searchTerm, onSearchChange, cartItemCount }) {
         />
       </label>
 
-      <div className="header-cart" aria-label="Sepetteki ürün adedi">
-        <strong>{cartItemCount}</strong>
-        <span>ürün</span>
+      <div className="header-actions">
+        <button className="orders-button" type="button" onClick={onOpenOrders}>
+          Siparişlerim
+        </button>
+        <div className="header-cart" aria-label="Sepetteki ürün adedi">
+          <strong>{cartItemCount}</strong>
+          <span>ürün</span>
+        </div>
       </div>
     </header>
   );

@@ -2,3 +2,6 @@ fastapi
 uvicorn[standard]
 pydantic
 pandas
+pwdlib[argon2]
+email-validator
+python-dotenv

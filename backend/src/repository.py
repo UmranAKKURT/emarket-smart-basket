@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sqlite3
+from datetime import datetime, timezone
 from typing import Any, Iterable
 
 try:
@@ -225,6 +227,251 @@ class OrderRepository(BaseRepository):
     Sipariş ve sipariş kalemleriyle ilgili sorguları yöneten repository sınıfı.
     """
 
+    def create_order(
+        self,
+        user_id: int,
+        items: list[dict[str, int]],
+    ) -> int:
+        """
+        Siparişi ve kalemlerini tek transaction içinde kaydeder.
+
+        Repository, servis katmanındaki kontrole ek olarak ürün id değerlerini
+        transaction içinde yeniden doğrular. Böylece eksik ürün durumunda
+        kısmi sipariş kaydı oluşmaz.
+        """
+
+        merged_items: dict[int, int] = {}
+        for item in items:
+            product_id = int(item["product_id"])
+            quantity = int(item["quantity"])
+            merged_items[product_id] = merged_items.get(product_id, 0) + quantity
+
+        if not merged_items:
+            raise RepositoryError("Sipariş en az bir ürün içermelidir.")
+
+        connection = self.db_helper.get_connection()
+
+        try:
+            connection.execute("BEGIN;")
+
+            product_ids = list(merged_items)
+            placeholders = ", ".join("?" for _ in product_ids)
+            rows = connection.execute(
+                f"SELECT id, price FROM products WHERE id IN ({placeholders});",
+                tuple(product_ids),
+            ).fetchall()
+            existing_product_ids = {int(row["id"]) for row in rows}
+            product_prices = {
+                int(row["id"]): float(row["price"])
+                for row in rows
+            }
+            missing_product_ids = sorted(set(product_ids) - existing_product_ids)
+
+            if missing_product_ids:
+                raise RepositoryError(
+                    "Bulunamayan ürün id değerleri: "
+                    + ", ".join(str(product_id) for product_id in missing_product_ids)
+                )
+
+            cursor = connection.execute(
+                """
+                INSERT INTO orders (user_id, created_at)
+                VALUES (?, ?);
+                """,
+                (
+                    user_id,
+                    datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                ),
+            )
+            order_id = int(cursor.lastrowid)
+
+            connection.executemany(
+                """
+                INSERT INTO order_items
+                    (order_id, product_id, quantity, unit_price)
+                VALUES (?, ?, ?, ?);
+                """,
+                [
+                    (
+                        order_id,
+                        product_id,
+                        quantity,
+                        product_prices[product_id],
+                    )
+                    for product_id, quantity in merged_items.items()
+                ],
+            )
+            connection.commit()
+            return order_id
+        except RepositoryError:
+            connection.rollback()
+            raise
+        except (sqlite3.Error, KeyError, TypeError, ValueError) as exception:
+            connection.rollback()
+            raise RepositoryError(
+                "Sipariş veritabanına kaydedilemedi."
+            ) from exception
+        finally:
+            connection.close()
+
+    def get_order_summary(self, order_id: int) -> dict[str, Any] | None:
+        """
+        Sipariş üst bilgisini, ürünlerini ve veritabanı fiyatlı toplamını getirir.
+        """
+
+        with self.db_helper.get_connection() as connection:
+            order_row = connection.execute(
+                """
+                SELECT id, user_id, created_at
+                FROM orders
+                WHERE id = ?;
+                """,
+                (order_id,),
+            ).fetchone()
+
+            if order_row is None:
+                return None
+
+            item_rows = connection.execute(
+                """
+                SELECT
+                    oi.product_id,
+                    p.name AS product_name,
+                    p.emoji,
+                    COALESCE(oi.unit_price, p.price) AS price,
+                    oi.quantity,
+                    ROUND(
+                        COALESCE(oi.unit_price, p.price) * oi.quantity,
+                        2
+                    ) AS line_total
+                FROM order_items AS oi
+                INNER JOIN products AS p
+                    ON p.id = oi.product_id
+                WHERE oi.order_id = ?
+                ORDER BY oi.id ASC;
+                """,
+                (order_id,),
+            ).fetchall()
+
+        items = self._rows_to_dicts(item_rows)
+        total_amount = round(
+            sum(float(item["line_total"]) for item in items),
+            2,
+        )
+
+        return {
+            "order_id": int(order_row["id"]),
+            "user_id": int(order_row["user_id"]),
+            "created_at": order_row["created_at"],
+            "items": items,
+            "total_amount": total_amount,
+        }
+
+    def get_orders_by_user(
+        self,
+        user_id: int,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Kullanıcının siparişlerini özet bilgilerle en yeniden eskiye getirir."""
+
+        with self.db_helper.get_connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    o.id AS order_id,
+                    o.user_id,
+                    o.created_at,
+                    COUNT(DISTINCT oi.product_id) AS item_count,
+                    SUM(oi.quantity) AS total_quantity,
+                    ROUND(
+                        SUM(COALESCE(oi.unit_price, p.price) * oi.quantity),
+                        2
+                    ) AS total_amount
+                FROM orders AS o
+                INNER JOIN order_items AS oi
+                    ON oi.order_id = o.id
+                INNER JOIN products AS p
+                    ON p.id = oi.product_id
+                WHERE o.user_id = ?
+                GROUP BY o.id, o.user_id, o.created_at
+                ORDER BY o.created_at DESC, o.id DESC
+                LIMIT ? OFFSET ?;
+                """,
+                (user_id, limit, offset),
+            ).fetchall()
+
+        return self._rows_to_dicts(rows)
+
+    def count_orders_by_user(self, user_id: int) -> int:
+        """Kullanıcının toplam sipariş sayısını getirir."""
+
+        with self.db_helper.get_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT COUNT(*) AS total
+                FROM orders
+                WHERE user_id = ?;
+                """,
+                (user_id,),
+            ).fetchone()
+
+        return int(row["total"])
+
+    def get_order_summary_for_user(
+        self,
+        order_id: int,
+        user_id: int,
+    ) -> dict[str, Any] | None:
+        """Sipariş kullanıcıya aitse detay özetini, aksi halde None döndürür."""
+
+        with self.db_helper.get_connection() as connection:
+            order_row = connection.execute(
+                """
+                SELECT id, user_id, created_at
+                FROM orders
+                WHERE id = ? AND user_id = ?;
+                """,
+                (order_id, user_id),
+            ).fetchone()
+
+            if order_row is None:
+                return None
+
+            item_rows = connection.execute(
+                """
+                SELECT
+                    oi.product_id,
+                    p.name AS product_name,
+                    p.emoji,
+                    COALESCE(oi.unit_price, p.price) AS price,
+                    oi.quantity,
+                    ROUND(
+                        COALESCE(oi.unit_price, p.price) * oi.quantity,
+                        2
+                    ) AS line_total
+                FROM order_items AS oi
+                INNER JOIN products AS p
+                    ON p.id = oi.product_id
+                WHERE oi.order_id = ?
+                ORDER BY oi.id ASC;
+                """,
+                (order_id,),
+            ).fetchall()
+
+        items = self._rows_to_dicts(item_rows)
+
+        return {
+            "order_id": int(order_row["id"]),
+            "user_id": int(order_row["user_id"]),
+            "created_at": order_row["created_at"],
+            "items": items,
+            "total_amount": round(
+                sum(float(item["line_total"]) for item in items),
+                2,
+            ),
+        }
+
     def get_all_orders(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         """
         Siparişleri sayfalama mantığıyla getirir.
@@ -279,10 +526,13 @@ class OrderRepository(BaseRepository):
                     oi.product_id,
                     p.name AS product_name,
                     p.category,
-                    p.price,
+                    COALESCE(oi.unit_price, p.price) AS price,
                     p.emoji,
                     oi.quantity,
-                    ROUND(p.price * oi.quantity, 2) AS line_total
+                    ROUND(
+                        COALESCE(oi.unit_price, p.price) * oi.quantity,
+                        2
+                    ) AS line_total
                 FROM order_items AS oi
                 INNER JOIN products AS p
                     ON p.id = oi.product_id
