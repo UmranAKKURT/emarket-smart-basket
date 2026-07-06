@@ -1,5 +1,3 @@
-import { formatCurrency } from "../utils/currency.js";
-
 const shortDateFormatter = new Intl.DateTimeFormat("tr-TR", {
   day: "2-digit",
   month: "short"
@@ -7,35 +5,41 @@ const shortDateFormatter = new Intl.DateTimeFormat("tr-TR", {
 
 function SalesTrendChart({ sales }) {
   if (sales.length === 0) {
-    return <p className="analytics-empty">Günlük satış verisi bulunmuyor.</p>;
+    return <p className="analytics-empty">Günlük sipariş verisi bulunmuyor.</p>;
   }
 
-  const maxRevenue = Math.max(
+  const maxOrderCount = Math.max(
     1,
-    ...sales.map((dailySale) => dailySale.total_revenue)
+    ...sales.map((dailySale) => dailySale.order_count)
+  );
+  const totalOrders = sales.reduce(
+    (total, dailySale) => total + dailySale.order_count,
+    0
   );
 
   return (
     <div className="sales-trend-scroll">
+      <div className="daily-orders-summary">
+        <strong>{totalOrders}</strong>
+        <span>seçili dönemdeki sipariş</span>
+      </div>
       <div
-        className="sales-trend-chart"
+        className="sales-trend-chart daily-orders-chart"
         style={{ gridTemplateColumns: `repeat(${sales.length}, minmax(24px, 1fr))` }}
       >
         {sales.map((dailySale) => (
           <div
             key={dailySale.date}
             className="sales-trend-day"
-            title={`${dailySale.date}: ${formatCurrency(dailySale.total_revenue)}, ${dailySale.order_count} sipariş`}
+            title={`${dailySale.date}: ${dailySale.order_count} sipariş`}
           >
             <span className="sales-trend-value">
-              {dailySale.total_revenue > 0
-                ? formatCurrency(dailySale.total_revenue)
-                : ""}
+              {dailySale.order_count > 0 ? dailySale.order_count : ""}
             </span>
             <div className="sales-trend-column">
               <span
                 style={{
-                  height: `${(dailySale.total_revenue / maxRevenue) * 100}%`
+                  height: `${(dailySale.order_count / maxOrderCount) * 100}%`
                 }}
               />
             </div>

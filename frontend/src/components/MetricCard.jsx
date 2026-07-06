@@ -1,6 +1,6 @@
-function MetricCard({ title, value, icon }) {
+function MetricCard({ title, value, icon, subtitle, tone = "default" }) {
   return (
-    <article className="metric-card">
+    <article className={`metric-card metric-card-${tone}`}>
       {icon && (
         <span className="metric-card-icon" aria-hidden="true">
           {icon}
@@ -9,6 +9,7 @@ function MetricCard({ title, value, icon }) {
       <div>
         <span>{title}</span>
         <strong>{value}</strong>
+        {subtitle && <small>{subtitle}</small>}
       </div>
     </article>
   );

@@ -25,7 +25,11 @@ class AnalyticsRepository:
                         COALESCE(oi.unit_price, p.price) * oi.quantity
                     ), 0) AS total_revenue,
                     COALESCE(SUM(oi.quantity), 0) AS total_units_sold,
-                    COUNT(DISTINCT o.user_id) AS unique_customers
+                    COUNT(DISTINCT o.user_id) AS unique_customers,
+                    MAX(o.created_at) AS last_order_at,
+                    (SELECT COUNT(*) FROM products) AS total_products,
+                    (SELECT COUNT(DISTINCT category) FROM products)
+                        AS total_categories
                 FROM orders AS o
                 LEFT JOIN order_items AS oi
                     ON oi.order_id = o.id
@@ -45,7 +49,34 @@ class AnalyticsRepository:
                 total_revenue / total_orders if total_orders else 0.0
             ),
             "unique_customers": int(row["unique_customers"]),
+            "total_products": int(row["total_products"]),
+            "total_categories": int(row["total_categories"]),
+            "last_order_at": row["last_order_at"],
         }
+
+    def get_most_recommended_product(self) -> dict[str, Any] | None:
+        with self.db_helper.get_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    product.id AS product_id,
+                    product.name AS product_name,
+                    product.emoji,
+                    COUNT(rule.id) AS recommendation_count
+                FROM association_rules AS rule
+                INNER JOIN products AS product
+                    ON product.id = rule.consequent_product_id
+                GROUP BY product.id, product.name, product.emoji
+                ORDER BY
+                    recommendation_count DESC,
+                    AVG(rule.confidence) DESC,
+                    MAX(rule.lift) DESC,
+                    product.name ASC
+                LIMIT 1;
+                """
+            ).fetchone()
+
+        return dict(row) if row is not None else None
 
     def get_top_products(self, limit: int = 5) -> list[dict[str, Any]]:
         with self.db_helper.get_connection() as connection:

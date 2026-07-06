@@ -14,6 +14,10 @@ def test_summary_matches_temporary_database_health(client: TestClient) -> None:
     summary = response.json()
     assert summary["total_orders"] == health["order_count"]
     assert summary["total_revenue"] > 0
+    assert summary["total_products"] == health["product_count"]
+    assert summary["total_categories"] > 0
+    assert summary["last_order_at"] is not None
+    assert summary["most_recommended_product"]["recommendation_count"] > 0
     assert summary["average_order_value"] == round(
         summary["total_revenue"] / summary["total_orders"],
         2,
@@ -119,6 +123,13 @@ def test_dashboard_contains_all_sections(client: TestClient) -> None:
         "daily_sales",
         "strongest_rules",
     }
+    summary = response.json()["summary"]
+    assert {
+        "total_products",
+        "total_categories",
+        "last_order_at",
+        "most_recommended_product",
+    }.issubset(summary)
 
 
 def test_created_order_stores_database_unit_price(

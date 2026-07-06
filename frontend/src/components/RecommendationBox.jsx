@@ -1,10 +1,11 @@
 import { useState } from "react";
 
 import { formatCurrency } from "../utils/currency.js";
-
-function formatPercent(value) {
-  return `%${Math.round((Number(value) || 0) * 100)}`;
-}
+import {
+  buildRuleExplanation,
+  formatRulePercent
+} from "../utils/ruleMetrics.js";
+import LoadingSpinner from "./LoadingSpinner.jsx";
 
 function RecommendationBox({
   recommendation,
@@ -30,7 +31,7 @@ function RecommendationBox({
     return (
       <section className="recommendation-box muted" aria-live="polite">
         <p className="panel-kicker">Sepetini Tamamla</p>
-        <strong>Öneriler hazırlanıyor...</strong>
+        <LoadingSpinner label="Öneriler hazırlanıyor..." size="small" />
       </section>
     );
   }
@@ -68,6 +69,38 @@ function RecommendationBox({
         </div>
       </div>
 
+      <div className="recommendation-reason">
+        <span aria-hidden="true">✨</span>
+        <div>
+          <strong>Neden bu ürün?</strong>
+          <p>
+            {buildRuleExplanation({
+              antecedentName: recommendation.source_product_name,
+              consequentName: recommendation.recommended_product_name,
+              confidence: recommendation.confidence
+            })}
+          </p>
+        </div>
+      </div>
+
+      <dl className="recommendation-metrics" aria-label="Öneri metrikleri">
+        <div>
+          <dt>Confidence</dt>
+          <dd>{formatRulePercent(recommendation.confidence)}</dd>
+          <small>Birlikte alma oranı</small>
+        </div>
+        <div>
+          <dt>Lift</dt>
+          <dd>{Number(recommendation.lift || 0).toFixed(2)}×</dd>
+          <small>Beklenene göre ilişki gücü</small>
+        </div>
+        <div>
+          <dt>Support</dt>
+          <dd>{formatRulePercent(recommendation.support)}</dd>
+          <small>Tüm siparişlerde görülme</small>
+        </div>
+      </dl>
+
       <p className="recommendation-message">{recommendation.context_message}</p>
 
       <button
@@ -84,19 +117,19 @@ function RecommendationBox({
         open={isDetailsOpen}
         onToggle={(event) => setIsDetailsOpen(event.currentTarget.open)}
       >
-        <summary>Neden önerildi?</summary>
+        <summary>Metrikler ne anlama geliyor?</summary>
         <dl>
           <div>
-            <dt>Öneri gücü</dt>
-            <dd>{formatPercent(recommendation.confidence)}</dd>
+            <dt>Confidence</dt>
+            <dd>Kaynak ürünü alanların önerilen ürünü de alma oranıdır.</dd>
           </div>
           <div>
             <dt>Lift</dt>
-            <dd>{Number(recommendation.lift || 0).toFixed(2)}</dd>
+            <dd>İlişkinin rastlantıya göre kaç kat güçlü olduğunu gösterir.</dd>
           </div>
           <div>
             <dt>Support</dt>
-            <dd>{formatPercent(recommendation.support)}</dd>
+            <dd>Bu ürün çiftinin tüm siparişlerde görülme oranıdır.</dd>
           </div>
         </dl>
       </details>

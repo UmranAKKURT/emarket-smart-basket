@@ -16,21 +16,31 @@ function Header({
         </div>
       </div>
 
-      <label className="search-box">
+      <label className="search-box" htmlFor="product-search">
         <span>Ürün ara</span>
         <input
+          id="product-search"
           type="search"
           value={searchTerm}
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder="Domates, peynir, süt..."
+          autoComplete="off"
+          aria-describedby="product-search-hint"
         />
+        <span className="sr-only" id="product-search-hint">
+          Ürün adını yazarak katalog içinde arama yapabilirsiniz.
+        </span>
       </label>
 
       <div className="header-actions">
         <button className="orders-button" type="button" onClick={onOpenOrders}>
           Siparişlerim
         </button>
-        <div className="header-cart" aria-label="Sepetteki ürün adedi">
+        <div
+          className="header-cart"
+          aria-label={`Sepette ${cartItemCount} ürün var`}
+          aria-live="polite"
+        >
           <strong>{cartItemCount}</strong>
           <span>ürün</span>
         </div>

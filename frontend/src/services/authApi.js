@@ -1,19 +1,22 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+import {
+  ADMIN_CSRF_COOKIE_NAME,
+  API_BASE_URL
+} from "../config/api.js";
+import { getCookieValue } from "../utils/cookies.js";
+import { requestJson } from "./httpClient.js";
 
 async function authRequest(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  return requestJson(path, {
+    baseUrl: API_BASE_URL,
     method: options.method ?? "GET",
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...options.headers },
-    body: options.body ? JSON.stringify(options.body) : undefined
+    headers: options.headers,
+    body: options.body,
+    defaultErrorMessage: "Kimlik doğrulama isteği başarısız oldu.",
+    resolveErrorMessage: (data) => data?.detail,
+    // Auth endpointleri boş veya geçersiz hata gövdelerinde genel mesaj kullanır.
+    ignoreInvalidJson: true
   });
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    const error = new Error(data?.detail || "Kimlik doğrulama isteği başarısız oldu.");
-    error.status = response.status;
-    throw error;
-  }
-  return data;
 }
 
 export function adminLogin(email, password) {
@@ -28,9 +31,7 @@ export function getAdminMe() {
 }
 
 export function getCsrfTokenFromCookie() {
-  const prefix = "emarket_admin_csrf=";
-  const cookie = document.cookie.split("; ").find((item) => item.startsWith(prefix));
-  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : null;
+  return getCookieValue(ADMIN_CSRF_COOKIE_NAME);
 }
 
 export function adminLogout() {

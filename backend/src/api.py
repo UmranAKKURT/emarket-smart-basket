@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from typing import Annotated
 
@@ -15,49 +16,37 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-
 from src.analytics_repository import AnalyticsRepository
-from src.analytics_service import (
-    AnalyticsService,
-    AnalyticsServiceError,
-    InvalidAnalyticsParameterError,
-)
+from src.analytics_service import AnalyticsService
 from src.auth_dependencies import get_current_user, require_admin, require_admin_csrf
 from src.auth_repository import AuthRepository
-from src.auth_service import (
-    AccountLockedError,
-    AuthService,
-    AuthServiceError,
-    CsrfValidationError,
-    ForbiddenError,
-    InactiveAccountError,
-    InvalidCredentialsError,
-    UnauthorizedError,
-    WeakPasswordError,
-)
+from src.auth_service import AuthService
 from src.db_helper import EMarketDBHelper
-from src.engine import (
-    BasketValidationError,
-    RecommendationEngine,
-    RecommendationEngineError,
-)
-from src.order_service import (
-    InvalidOrderError,
-    OrderNotFoundError,
-    OrderService,
-    OrderServiceError,
-    ProductNotFoundError,
-)
+from src.engine import RecommendationEngine
+from src.exception_handlers import register_exception_handlers
+from src.logging_config import configure_logging
+from src.order_service import OrderService
 from src.repository import (
     AssociationRuleRepository,
     OrderRepository,
     ProductRepository,
-    RepositoryError,
 )
-from src.rule_miner import AssociationRuleMiner, RuleMiningError
+from src.request_logging import register_request_logging
+from src.rule_miner import AssociationRuleMiner
 from src.security import Security
 from src.settings import Settings
+from src.validation import (
+    MAX_ANALYTICS_DAYS,
+    MAX_PAGE_LIMIT,
+    MAX_RULE_LIMIT,
+    MAX_TOP_PRODUCT_LIMIT,
+    MIN_ANALYTICS_DAYS,
+    MIN_IDENTIFIER,
+    MIN_PAGE_LIMIT,
+    MIN_PAGE_OFFSET,
+    MIN_RULE_LIMIT,
+    MIN_TOP_PRODUCT_LIMIT,
+)
 from src.schemas import (
     APIInfoResponse,
     AdminLoginRequest,
@@ -72,6 +61,7 @@ from src.schemas import (
     CreateOrderRequest,
     CreateOrderResponse,
     DailySalesResponse,
+    ErrorResponse,
     HealthResponse,
     OrderDetailResponse,
     OrderHistoryResponse,
@@ -83,6 +73,9 @@ from src.schemas import (
     StrongRuleResponse,
     TopProductResponse,
 )
+
+
+logger = logging.getLogger("emarket.api")
 
 
 class ApplicationContainer:
@@ -159,7 +152,15 @@ ContainerDependency = Annotated[
 ]
 
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter(
+    prefix="/api/v1",
+    responses={
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "model": ErrorResponse,
+            "description": "Standart sunucu hata yanıtı.",
+        }
+    },
+)
 
 
 @router.post(
@@ -360,9 +361,9 @@ def get_categories(
 )
 def get_order_history(
     container: ContainerDependency,
-    user_id: Annotated[int, Query(gt=0)],
-    limit: Annotated[int, Query(ge=1, le=50)] = 20,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    user_id: Annotated[int, Query(ge=MIN_IDENTIFIER)],
+    limit: Annotated[int, Query(ge=MIN_PAGE_LIMIT, le=MAX_PAGE_LIMIT)] = 20,
+    offset: Annotated[int, Query(ge=MIN_PAGE_OFFSET)] = 0,
 ) -> OrderHistoryResponse:
     history = container.order_service.get_user_orders(
         user_id=user_id,
@@ -380,7 +381,7 @@ def get_order_history(
 def get_order_detail(
     order_id: int,
     container: ContainerDependency,
-    user_id: Annotated[int, Query(gt=0)],
+    user_id: Annotated[int, Query(ge=MIN_IDENTIFIER)],
 ) -> OrderDetailResponse:
     detail = container.order_service.get_user_order_detail(
         user_id=user_id,
@@ -461,9 +462,18 @@ def get_recommendations(
 )
 def get_analytics_dashboard(
     container: ContainerDependency,
-    top_product_limit: Annotated[int, Query(ge=1, le=20)] = 5,
-    rule_limit: Annotated[int, Query(ge=1, le=50)] = 10,
-    days: Annotated[int, Query(ge=7, le=365)] = 30,
+    top_product_limit: Annotated[
+        int,
+        Query(ge=MIN_TOP_PRODUCT_LIMIT, le=MAX_TOP_PRODUCT_LIMIT),
+    ] = 5,
+    rule_limit: Annotated[
+        int,
+        Query(ge=MIN_RULE_LIMIT, le=MAX_RULE_LIMIT),
+    ] = 10,
+    days: Annotated[
+        int,
+        Query(ge=MIN_ANALYTICS_DAYS, le=MAX_ANALYTICS_DAYS),
+    ] = 30,
 ) -> AnalyticsDashboardResponse:
     return AnalyticsDashboardResponse(
         summary=container.analytics_service.get_dashboard_summary(),
@@ -500,7 +510,10 @@ def get_analytics_summary(
 )
 def get_top_products_analytics(
     container: ContainerDependency,
-    limit: Annotated[int, Query(ge=1, le=20)] = 5,
+    limit: Annotated[
+        int,
+        Query(ge=MIN_TOP_PRODUCT_LIMIT, le=MAX_TOP_PRODUCT_LIMIT),
+    ] = 5,
 ) -> list[TopProductResponse]:
     return [
         TopProductResponse(**product)
@@ -531,7 +544,10 @@ def get_category_sales_analytics(
 )
 def get_daily_sales_analytics(
     container: ContainerDependency,
-    days: Annotated[int, Query(ge=7, le=365)] = 30,
+    days: Annotated[
+        int,
+        Query(ge=MIN_ANALYTICS_DAYS, le=MAX_ANALYTICS_DAYS),
+    ] = 30,
 ) -> list[DailySalesResponse]:
     return [
         DailySalesResponse(**daily_sale)
@@ -547,7 +563,10 @@ def get_daily_sales_analytics(
 )
 def get_strongest_rules_analytics(
     container: ContainerDependency,
-    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+    limit: Annotated[
+        int,
+        Query(ge=MIN_RULE_LIMIT, le=MAX_RULE_LIMIT),
+    ] = 10,
 ) -> list[StrongRuleResponse]:
     return [
         StrongRuleResponse(**rule)
@@ -581,164 +600,25 @@ def rebuild_association_rules(
     )
 
 
-def register_exception_handlers(app: FastAPI) -> None:
-    """
-    Uygulamadaki özel hata türleri için HTTP yanıtlarını tanımlar.
-    """
-
-    def auth_response(status_code: int, detail: str) -> JSONResponse:
-        headers = {"WWW-Authenticate": "Cookie"} if status_code == 401 else None
-        return JSONResponse(
-            status_code=status_code,
-            content={"detail": detail},
-            headers=headers,
-        )
-
-    @app.exception_handler(InvalidCredentialsError)
-    async def invalid_credentials_handler(request: Request, exception: InvalidCredentialsError) -> JSONResponse:
-        return auth_response(401, str(exception))
-
-    @app.exception_handler(UnauthorizedError)
-    async def unauthorized_handler(request: Request, exception: UnauthorizedError) -> JSONResponse:
-        return auth_response(401, str(exception))
-
-    @app.exception_handler(ForbiddenError)
-    async def forbidden_handler(request: Request, exception: ForbiddenError) -> JSONResponse:
-        return auth_response(403, str(exception))
-
-    @app.exception_handler(CsrfValidationError)
-    async def csrf_handler(request: Request, exception: CsrfValidationError) -> JSONResponse:
-        return auth_response(403, str(exception))
-
-    @app.exception_handler(AccountLockedError)
-    async def locked_handler(request: Request, exception: AccountLockedError) -> JSONResponse:
-        return auth_response(429, str(exception))
-
-    @app.exception_handler(InactiveAccountError)
-    async def inactive_handler(request: Request, exception: InactiveAccountError) -> JSONResponse:
-        return auth_response(403, "Hesap aktif değil.")
-
-    @app.exception_handler(WeakPasswordError)
-    async def weak_password_handler(request: Request, exception: WeakPasswordError) -> JSONResponse:
-        return auth_response(422, str(exception))
-
-    @app.exception_handler(AuthServiceError)
-    async def auth_service_handler(request: Request, exception: AuthServiceError) -> JSONResponse:
-        return auth_response(500, "Kimlik doğrulama işlemi tamamlanamadı.")
-
-    @app.exception_handler(InvalidAnalyticsParameterError)
-    async def invalid_analytics_parameter_exception_handler(
-        request: Request,
-        exception: InvalidAnalyticsParameterError,
-    ) -> JSONResponse:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": str(exception)},
-        )
-
-    @app.exception_handler(AnalyticsServiceError)
-    async def analytics_service_exception_handler(
-        request: Request,
-        exception: AnalyticsServiceError,
-    ) -> JSONResponse:
-        return JSONResponse(
-            status_code=500,
-            content={"detail": str(exception)},
-        )
-
-    @app.exception_handler(OrderNotFoundError)
-    async def order_not_found_exception_handler(
-        request: Request,
-        exception: OrderNotFoundError,
-    ) -> JSONResponse:
-        return JSONResponse(
-            status_code=404,
-            content={"detail": str(exception)},
-        )
-
-    @app.exception_handler(InvalidOrderError)
-    async def invalid_order_exception_handler(
-        request: Request,
-        exception: InvalidOrderError,
-    ) -> JSONResponse:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": str(exception)},
-        )
-
-    @app.exception_handler(ProductNotFoundError)
-    async def product_not_found_exception_handler(
-        request: Request,
-        exception: ProductNotFoundError,
-    ) -> JSONResponse:
-        return JSONResponse(
-            status_code=404,
-            content={"detail": str(exception)},
-        )
-
-    @app.exception_handler(OrderServiceError)
-    async def order_service_exception_handler(
-        request: Request,
-        exception: OrderServiceError,
-    ) -> JSONResponse:
-        return JSONResponse(
-            status_code=500,
-            content={"detail": str(exception)},
-        )
-
-    @app.exception_handler(BasketValidationError)
-    async def basket_validation_exception_handler(
-        request: Request,
-        exception: BasketValidationError,
-    ) -> JSONResponse:
-        return JSONResponse(
-            status_code=422,
-            content={"detail": str(exception)},
-        )
-
-    @app.exception_handler(RecommendationEngineError)
-    async def recommendation_exception_handler(
-        request: Request,
-        exception: RecommendationEngineError,
-    ) -> JSONResponse:
-        return JSONResponse(
-            status_code=500,
-            content={"detail": str(exception)},
-        )
-
-    @app.exception_handler(RuleMiningError)
-    async def rule_mining_exception_handler(
-        request: Request,
-        exception: RuleMiningError,
-    ) -> JSONResponse:
-        return JSONResponse(
-            status_code=500,
-            content={"detail": str(exception)},
-        )
-
-    @app.exception_handler(RepositoryError)
-    async def repository_exception_handler(
-        request: Request,
-        exception: RepositoryError,
-    ) -> JSONResponse:
-        return JSONResponse(
-            status_code=500,
-            content={"detail": str(exception)},
-        )
-
-
 def create_app(container: ApplicationContainer | None = None) -> FastAPI:
     """
     FastAPI uygulamasını oluşturan application factory.
     """
 
     container = container or ApplicationContainer()
+    configure_logging(container.settings.log_level)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        logger.info(
+            "application_starting environment=%s",
+            container.settings.environment,
+        )
         container.initialize()
         app.state.container = container
+        logger.info("application_started")
         yield
+        logger.info("application_stopped")
 
     app = FastAPI(
         title="E-Market Smart Basket API",
@@ -759,6 +639,7 @@ def create_app(container: ApplicationContainer | None = None) -> FastAPI:
     )
 
     register_exception_handlers(app)
+    register_request_logging(app)
     app.include_router(router)
 
     @app.get(

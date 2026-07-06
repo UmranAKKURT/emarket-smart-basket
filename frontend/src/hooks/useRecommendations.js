@@ -1,16 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
+import { DEFAULT_RECOMMENDATION_LIMIT } from "../config/constants.js";
 import { getRecommendations } from "../services/api.js";
 
-export function useRecommendations(cart, limit = 3) {
+export function useRecommendations(
+  basketProductIds,
+  limit = DEFAULT_RECOMMENDATION_LIMIT
+) {
   const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-
-  const basketProductIds = useMemo(
-    () => Array.from(new Set(cart.map((item) => item.id))),
-    [cart]
-  );
 
   useEffect(() => {
     if (basketProductIds.length === 0) {

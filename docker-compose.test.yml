@@ -1,0 +1,15 @@
+services:
+  backend-test:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.test
+    environment:
+      EMARKET_ENV: test
+      EMARKET_LOG_LEVEL: WARNING
+
+  frontend-test:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.test
+    environment:
+      CI: "true"

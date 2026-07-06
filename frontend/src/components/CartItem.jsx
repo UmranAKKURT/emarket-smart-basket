@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import { formatCurrency } from "../utils/currency.js";
 
 function CartItem({
@@ -26,7 +28,7 @@ function CartItem({
         >
           −
         </button>
-        <span>{item.quantity}</span>
+        <span aria-live="polite">{item.quantity}</span>
         <button
           type="button"
           aria-label={`${item.name} adet artır`}
@@ -39,6 +41,7 @@ function CartItem({
       <button
         className="remove-button"
         type="button"
+        aria-label={`${item.name} ürününü sepetten kaldır`}
         onClick={() => onRemoveFromCart(item.id)}
       >
         Kaldır
@@ -47,4 +50,5 @@ function CartItem({
   );
 }
 
-export default CartItem;
+// Sepet güncellenirken referansı değişmeyen satırlar yeniden çizilmez.
+export default memo(CartItem);

@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import AdminDashboard from "../components/AdminDashboard.jsx";
+import { DEFAULT_ANALYTICS_DAYS } from "../config/constants.js";
 import { useAdminAuth } from "../hooks/useAdminAuth.js";
+import { useToast } from "../hooks/useToast.js";
 import { getAnalyticsDashboard } from "../services/api.js";
 
 function AdminDashboardPage() {
@@ -10,10 +12,11 @@ function AdminDashboardPage() {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [days, setDays] = useState(30);
+  const [days, setDays] = useState(DEFAULT_ANALYTICS_DAYS);
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
-  async function load(selectedDays = days) {
+  const load = useCallback(async (selectedDays) => {
     setLoading(true);
     setError(null);
     try {
@@ -24,22 +27,37 @@ function AdminDashboardPage() {
         return;
       }
       setError(exception.message);
+      showToast({
+        type: "error",
+        title: "Analitik veriler yüklenemedi",
+        message: exception.message || "Lütfen kısa süre sonra tekrar deneyin."
+      });
     } finally {
       setLoading(false);
     }
-  }
+  }, [navigate, showToast]);
 
-  useEffect(() => { load(30); }, []);
+  useEffect(() => {
+    load(DEFAULT_ANALYTICS_DAYS);
+  }, [load]);
 
-  async function handleLogout() {
+  const handleLogout = useCallback(async () => {
     await logout();
+    showToast({
+      type: "success",
+      title: "Oturum kapatıldı",
+      message: "Güvenli şekilde çıkış yaptınız."
+    });
     navigate("/admin/login", { replace: true });
-  }
+  }, [logout, navigate, showToast]);
 
-  function changeDays(value) {
+  const changeDays = useCallback((value) => {
     setDays(value);
     load(value);
-  }
+  }, [load]);
+
+  const retry = useCallback(() => load(days), [days, load]);
+  const returnToMarket = useCallback(() => navigate("/"), [navigate]);
 
   return (
     <AdminDashboard
@@ -48,11 +66,11 @@ function AdminDashboardPage() {
       error={error}
       days={days}
       onDaysChange={changeDays}
-      onRetry={() => load(days)}
-      onClose={() => navigate("/")}
+      onRetry={retry}
+      onClose={returnToMarket}
       adminEmail={adminUser?.email}
       onLogout={handleLogout}
-      onMarket={() => navigate("/")}
+      onMarket={returnToMarket}
     />
   );
 }

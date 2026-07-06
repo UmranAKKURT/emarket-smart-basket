@@ -291,34 +291,43 @@ class AssociationRuleMiner:
 
         custom_messages = {
             ("Salkım Domates", "Ezine Peyniri"): (
-                "Tarifini Tamamla: Domatesin yanına Ezine Peyniri çok iyi gider! 🍅🧀"
+                "Tarifini Tamamla: Domatesin yanına Ezine Peyniri "
+                "çok iyi gider! 🍅🧀"
             ),
             ("Ezine Peyniri", "Salkım Domates"): (
-                "Kahvaltı Sepeti: Peynirin yanına taze domates eklemeyi unutma! 🧀🍅"
+                "Kahvaltı Sepeti: Peynirin yanına taze domates "
+                "eklemeyi unutma! 🧀🍅"
             ),
             ("Dana Kıyma", "Soğan"): (
-                "Yemek Hazırlığı: Kıymanın yanına soğan ekleyerek tarifini tamamlayabilirsin. 🥩🧅"
+                "Yemek Hazırlığı: Kıymanın yanına soğan ekleyerek "
+                "tarifini tamamlayabilirsin. 🥩🧅"
             ),
             ("Soğan", "Dana Kıyma"): (
-                "Akşam Yemeği Fikri: Soğanın yanına dana kıyma ekleyerek güzel bir yemek hazırlayabilirsin. 🧅🥩"
+                "Akşam Yemeği Fikri: Soğanın yanına dana kıyma "
+                "ekleyerek güzel bir yemek hazırlayabilirsin. 🧅🥩"
             ),
             ("Patates Cipsi", "Kola"): (
-                "Film Keyfi: Cipsin yanına kola ekleyerek atıştırmalık menünü tamamla. 🥔🥤"
+                "Film Keyfi: Cipsin yanına kola ekleyerek "
+                "atıştırmalık menünü tamamla. 🥔🥤"
             ),
             ("Kola", "Patates Cipsi"): (
-                "Atıştırmalık Önerisi: Kola sepetindeyken patates cipsi de iyi gider. 🥤🥔"
+                "Atıştırmalık Önerisi: Kola sepetindeyken patates "
+                "cipsi de iyi gider. 🥤🥔"
             ),
             ("Tavuk Göğsü", "Limon"): (
-                "Marine Önerisi: Tavuk göğsünün yanına limon ekleyerek lezzeti artırabilirsin. 🍗🍋"
+                "Marine Önerisi: Tavuk göğsünün yanına limon "
+                "ekleyerek lezzeti artırabilirsin. 🍗🍋"
             ),
             ("Limon", "Tavuk Göğsü"): (
-                "Yemek Hazırlığı: Limonun yanına tavuk göğsü ekleyerek pratik bir menü oluşturabilirsin. 🍋🍗"
+                "Yemek Hazırlığı: Limonun yanına tavuk göğsü "
+                "ekleyerek pratik bir menü oluşturabilirsin. 🍋🍗"
             ),
             ("Muz", "Tam Yağlı Süt"): (
                 "Smoothie Fikri: Muz ve sütle hızlı bir içecek hazırlayabilirsin. 🍌🥛"
             ),
             ("Tam Yağlı Süt", "Muz"): (
-                "Ara Öğün Önerisi: Sütün yanına muz ekleyerek smoothie hazırlayabilirsin. 🥛🍌"
+                "Ara Öğün Önerisi: Sütün yanına muz ekleyerek "
+                "smoothie hazırlayabilirsin. 🥛🍌"
             ),
         }
 

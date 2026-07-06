@@ -1,5 +1,5 @@
 import { StrictMode } from "react";
-import { act } from "react-dom/test-utils";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 
 import { useCart } from "./useCart.js";

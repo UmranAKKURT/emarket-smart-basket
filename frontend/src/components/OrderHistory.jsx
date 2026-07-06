@@ -1,15 +1,33 @@
+import { useEffect, useRef } from "react";
+
+import EmptyState from "./EmptyState.jsx";
+import LoadingSpinner from "./LoadingSpinner.jsx";
 import OrderHistoryItem from "./OrderHistoryItem.jsx";
 
 function OrderHistory({ history, loading, error, onViewDetail, onClose }) {
   const orders = history?.orders ?? [];
+  const panelRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof panelRef.current?.scrollIntoView !== "function") {
+      return;
+    }
+
+    panelRef.current.scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
+  }, []);
 
   return (
     <div className="order-panel-backdrop" role="presentation">
       <section
         className="order-panel"
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="order-history-title"
+        tabIndex={-1}
       >
         <div className="order-panel-header">
           <div>
@@ -22,7 +40,9 @@ function OrderHistory({ history, loading, error, onViewDetail, onClose }) {
         </div>
 
         {loading && (
-          <p className="order-panel-state">Siparişleriniz yükleniyor...</p>
+          <div className="order-panel-state">
+            <LoadingSpinner label="Siparişleriniz yükleniyor..." />
+          </div>
         )}
 
         {!loading && error && (
@@ -33,9 +53,13 @@ function OrderHistory({ history, loading, error, onViewDetail, onClose }) {
         )}
 
         {!loading && !error && orders.length === 0 && (
-          <p className="order-panel-state">
-            Henüz oluşturulmuş bir siparişiniz bulunmuyor.
-          </p>
+          <div className="order-panel-state">
+            <EmptyState
+              icon="📦"
+              title="Henüz siparişiniz yok"
+              description="Henüz oluşturulmuş bir siparişiniz bulunmuyor. İlk sepetinizi hazırlamaya başlayın."
+            />
+          </div>
         )}
 
         {!loading && !error && orders.length > 0 && (

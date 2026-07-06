@@ -1,4 +1,4 @@
-import { act } from "react-dom/test-utils";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
@@ -13,7 +13,17 @@ import AdminDashboardPage from "./AdminDashboardPage.jsx";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const data = {
-  summary: { total_orders: 1, total_revenue: 10, total_units_sold: 1, average_order_value: 10, unique_customers: 1 },
+  summary: {
+    total_orders: 1,
+    total_revenue: 10,
+    total_units_sold: 1,
+    average_order_value: 10,
+    unique_customers: 1,
+    total_products: 34,
+    total_categories: 7,
+    last_order_at: "2026-07-05T09:30:00+00:00",
+    most_recommended_product: null
+  },
   top_products: [], category_sales: [], daily_sales: [], strongest_rules: []
 };
 

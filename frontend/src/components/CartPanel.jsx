@@ -1,4 +1,6 @@
 import CartItem from "./CartItem.jsx";
+import EmptyState from "./EmptyState.jsx";
+import LoadingSpinner from "./LoadingSpinner.jsx";
 import { formatCurrency } from "../utils/currency.js";
 
 function CartPanel({
@@ -11,6 +13,8 @@ function CartPanel({
   onCheckout,
   isCheckoutLoading
 }) {
+  const hasCartItems = cart.length > 0;
+
   return (
     <section className="cart-panel" aria-label="Sepet">
       <div className="panel-header">
@@ -18,20 +22,28 @@ function CartPanel({
           <p className="panel-kicker">Sepet</p>
           <h2>Akıllı Sepetim</h2>
         </div>
-        {cart.length > 0 && (
-          <button className="text-button" type="button" onClick={onClearCart}>
+        {hasCartItems && (
+          <button
+            className="text-button"
+            type="button"
+            aria-label="Sepetteki tüm ürünleri temizle"
+            onClick={onClearCart}
+          >
             Temizle
           </button>
         )}
       </div>
 
-      {cart.length === 0 ? (
+      {!hasCartItems ? (
         <div className="cart-empty">
-          <strong>Sepet boş</strong>
-          <span>Seçimler burada toplanacak.</span>
+          <EmptyState
+            icon="🛒"
+            title="Sepet boş"
+            description="Beğendiğiniz ürünleri ekleyin; seçimleriniz burada toplansın."
+          />
         </div>
       ) : (
-        <ul className="cart-list">
+        <ul className="cart-list" aria-label="Sepetteki ürünler">
           {cart.map((item) => (
             <CartItem
               key={item.id}
@@ -44,7 +56,7 @@ function CartPanel({
         </ul>
       )}
 
-      <div className="cart-total">
+      <div className="cart-total" aria-live="polite">
         <span>Toplam</span>
         <strong>{formatCurrency(total)}</strong>
       </div>
@@ -52,12 +64,15 @@ function CartPanel({
       <button
         className="checkout-button"
         type="button"
-        disabled={cart.length === 0 || isCheckoutLoading}
+        disabled={!hasCartItems || isCheckoutLoading}
+        aria-busy={isCheckoutLoading ? "true" : "false"}
         onClick={onCheckout}
       >
-        {isCheckoutLoading
-          ? "Sipariş oluşturuluyor..."
-          : "Siparişi Tamamla"}
+        {isCheckoutLoading ? (
+          <LoadingSpinner label="Sipariş oluşturuluyor..." size="small" />
+        ) : (
+          "Siparişi Tamamla"
+        )}
       </button>
     </section>
   );

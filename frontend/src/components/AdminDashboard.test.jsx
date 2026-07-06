@@ -1,4 +1,4 @@
-import { act } from "react-dom/test-utils";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 
 import AdminDashboard from "./AdminDashboard.jsx";
@@ -11,7 +11,16 @@ const dashboard = {
     total_revenue: 4520.75,
     total_units_sold: 67,
     average_order_value: 205.49,
-    unique_customers: 16
+    unique_customers: 16,
+    total_products: 34,
+    total_categories: 7,
+    last_order_at: "2026-07-05T09:30:00+00:00",
+    most_recommended_product: {
+      product_id: 7,
+      product_name: "Ezine Peyniri",
+      emoji: "🧀",
+      recommendation_count: 3
+    }
   },
   top_products: [
     {
@@ -114,9 +123,16 @@ describe("AdminDashboard", () => {
 
     expect(container.textContent).toContain("Toplam Sipariş");
     expect(container.textContent).toContain("Toplam Ciro");
-    expect(container.textContent).toContain("En Çok Satılan Ürünler");
-    expect(container.textContent).toContain("Kategori Satış Dağılımı");
-    expect(container.textContent).toContain("Günlük Satış Trendi");
+    expect(container.textContent).toContain("Toplam Satılan Ürün");
+    expect(container.textContent).toContain("Toplam Ürün");
+    expect(container.textContent).toContain("Toplam Kategori");
+    expect(container.textContent).toContain("En Çok Satan Ürün");
+    expect(container.textContent).toContain("En Çok Önerilen Ürün");
+    expect(container.textContent).toContain("Ortalama Sepet Tutarı");
+    expect(container.textContent).toContain("Son Sipariş Tarihi");
+    expect(container.textContent).toContain("En Çok Satılan İlk 10 Ürün");
+    expect(container.textContent).toContain("Kategori Dağılımı");
+    expect(container.textContent).toContain("Günlük Sipariş Sayısı");
     expect(container.textContent).toContain(
       "En Güçlü Association Rule Sonuçları"
     );

@@ -1,6 +1,22 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+from src.validation import (
+    MAX_ITEM_QUANTITY,
+    MAX_RECOMMENDATION_LIMIT,
+    MIN_IDENTIFIER,
+    MIN_ITEM_QUANTITY,
+    MIN_RECOMMENDATION_LIMIT,
+)
+
+
+class ErrorResponse(BaseModel):
+    """Tüm HTTP hata yanıtlarının ortak gövdesi."""
+
+    detail: Any
 
 
 class ProductResponse(BaseModel):
@@ -26,12 +42,12 @@ class CategoryListResponse(BaseModel):
 
 
 class OrderItemRequest(BaseModel):
-    product_id: int = Field(gt=0)
-    quantity: int = Field(ge=1, le=50)
+    product_id: int = Field(ge=MIN_IDENTIFIER)
+    quantity: int = Field(ge=MIN_ITEM_QUANTITY, le=MAX_ITEM_QUANTITY)
 
 
 class CreateOrderRequest(BaseModel):
-    user_id: int = Field(gt=0)
+    user_id: int = Field(ge=MIN_IDENTIFIER)
     items: list[OrderItemRequest] = Field(min_length=1)
 
 
@@ -79,12 +95,23 @@ class OrderDetailResponse(BaseModel):
     total_amount: float
 
 
+class RecommendedProductSummaryResponse(BaseModel):
+    product_id: int
+    product_name: str
+    emoji: str
+    recommendation_count: int
+
+
 class AnalyticsSummaryResponse(BaseModel):
     total_orders: int
     total_revenue: float
     total_units_sold: int
     average_order_value: float
     unique_customers: int
+    total_products: int
+    total_categories: int
+    last_order_at: str | None
+    most_recommended_product: RecommendedProductSummaryResponse | None
 
 
 class TopProductResponse(BaseModel):
@@ -176,8 +203,8 @@ class RecommendationRequest(BaseModel):
 
     limit: int = Field(
         default=3,
-        ge=1,
-        le=10,
+        ge=MIN_RECOMMENDATION_LIMIT,
+        le=MAX_RECOMMENDATION_LIMIT,
         description="Döndürülecek maksimum öneri sayısı.",
     )
 

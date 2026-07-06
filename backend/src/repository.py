@@ -841,13 +841,17 @@ class AssociationRuleRepository(BaseRepository):
                 connection.commit()
 
         except Exception as exc:
-            raise RepositoryError(f"Association rule kayıtları eklenirken hata oluştu: {exc}") from exc
+            raise RepositoryError(
+                "Association rule kayıtları eklenirken hata oluştu: "
+                f"{exc}"
+            ) from exc
 
     def clear_rules(self) -> None:
         """
         Association rule tablosundaki tüm kayıtları siler.
 
-        Rule mining yeniden çalıştırıldığında eski kuralları temizlemek için kullanılabilir.
+        Rule mining yeniden çalıştırıldığında eski kuralları temizlemek için
+        kullanılabilir.
         """
 
         with self.db_helper.get_connection() as connection:

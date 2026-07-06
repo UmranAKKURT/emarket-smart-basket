@@ -9,8 +9,9 @@ function TopProductsChart({ products }) {
 
   return (
     <div className="top-products-chart">
-      {products.map((product) => (
+      {products.map((product, index) => (
         <article key={product.product_id} className="top-product-row">
+          <span className="top-product-rank">{index + 1}</span>
           <span className="analytics-product-emoji" aria-hidden="true">
             {product.emoji}
           </span>

@@ -3,6 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 from src.repository import OrderRepository, ProductRepository
+from src.validation import (
+    MAX_ITEM_QUANTITY,
+    MAX_PAGE_LIMIT,
+    MIN_ITEM_QUANTITY,
+    MIN_PAGE_LIMIT,
+)
 
 
 class OrderServiceError(Exception):
@@ -37,8 +43,7 @@ class OrderService:
         user_id: int,
         items: list[dict[str, int]],
     ) -> dict[str, Any]:
-        if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
-            raise InvalidOrderError("user_id sıfırdan büyük bir tam sayı olmalıdır.")
+        self._validate_user_id(user_id)
 
         if not isinstance(items, list) or not items:
             raise InvalidOrderError("Sipariş en az bir ürün içermelidir.")
@@ -68,8 +73,12 @@ class OrderService:
     ) -> dict[str, Any]:
         self._validate_user_id(user_id)
 
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
-            raise InvalidOrderError("limit 1 ile 50 arasında olmalıdır.")
+        self._validate_integer_range(
+            name="limit",
+            value=limit,
+            minimum=MIN_PAGE_LIMIT,
+            maximum=MAX_PAGE_LIMIT,
+        )
 
         if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
             raise InvalidOrderError("offset sıfır veya daha büyük olmalıdır.")
@@ -93,12 +102,7 @@ class OrderService:
     ) -> dict[str, Any]:
         self._validate_user_id(user_id)
 
-        if (
-            isinstance(order_id, bool)
-            or not isinstance(order_id, int)
-            or order_id <= 0
-        ):
-            raise InvalidOrderError("order_id sıfırdan büyük bir tam sayı olmalıdır.")
+        self._validate_positive_integer("order_id", order_id)
 
         summary = self.order_repository.get_order_summary_for_user(
             order_id=order_id,
@@ -114,8 +118,30 @@ class OrderService:
 
     @staticmethod
     def _validate_user_id(user_id: int) -> None:
-        if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
-            raise InvalidOrderError("user_id sıfırdan büyük bir tam sayı olmalıdır.")
+        OrderService._validate_positive_integer("user_id", user_id)
+
+    @staticmethod
+    def _validate_positive_integer(name: str, value: int) -> None:
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise InvalidOrderError(
+                f"{name} sıfırdan büyük bir tam sayı olmalıdır."
+            )
+
+    @staticmethod
+    def _validate_integer_range(
+        name: str,
+        value: int,
+        minimum: int,
+        maximum: int,
+    ) -> None:
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or not minimum <= value <= maximum
+        ):
+            raise InvalidOrderError(
+                f"{name} {minimum} ile {maximum} arasında olmalıdır."
+            )
 
     def _validate_and_merge_items(
         self,
@@ -130,26 +156,19 @@ class OrderService:
             product_id = item.get("product_id")
             quantity = item.get("quantity")
 
-            if (
-                isinstance(product_id, bool)
-                or not isinstance(product_id, int)
-                or product_id <= 0
-            ):
-                raise InvalidOrderError(
-                    "product_id sıfırdan büyük bir tam sayı olmalıdır."
-                )
-
-            if (
-                isinstance(quantity, bool)
-                or not isinstance(quantity, int)
-                or not 1 <= quantity <= 50
-            ):
-                raise InvalidOrderError("quantity 1 ile 50 arasında olmalıdır.")
+            self._validate_positive_integer("product_id", product_id)
+            self._validate_integer_range(
+                name="quantity",
+                value=quantity,
+                minimum=MIN_ITEM_QUANTITY,
+                maximum=MAX_ITEM_QUANTITY,
+            )
 
             merged_quantity = merged_items.get(product_id, 0) + quantity
-            if merged_quantity > 50:
+            if merged_quantity > MAX_ITEM_QUANTITY:
                 raise InvalidOrderError(
-                    f"{product_id} id değerli ürünün toplam quantity değeri 50'yi aşamaz."
+                    f"{product_id} id değerli ürünün toplam quantity değeri "
+                    f"{MAX_ITEM_QUANTITY}'yi aşamaz."
                 )
 
             merged_items[product_id] = merged_quantity
@@ -162,7 +181,9 @@ class OrderService:
         missing_product_ids = sorted(set(product_ids) - existing_product_ids)
 
         if missing_product_ids:
-            missing_text = ", ".join(str(product_id) for product_id in missing_product_ids)
+            missing_text = ", ".join(
+                str(product_id) for product_id in missing_product_ids
+            )
             raise ProductNotFoundError(
                 f"Bulunamayan ürün id değerleri: {missing_text}"
             )

@@ -1,53 +1,28 @@
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
-
-function buildUrl(path, params = {}) {
-  const base = API_BASE_URL.startsWith("http")
-    ? API_BASE_URL
-    : `${window.location.origin}${API_BASE_URL}`;
-  const normalizedBase = base.replace(/\/+$/, "");
-  const normalizedPath = path.replace(/^\/+/, "");
-  const url = new URL(`${normalizedBase}/${normalizedPath}`);
-
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") {
-      url.searchParams.set(key, value);
-    }
-  });
-
-  return url.toString();
-}
+import { API_BASE_URL } from "../config/api.js";
+import { getUniqueValues } from "../utils/array.js";
+import { requestJson } from "./httpClient.js";
 
 async function request(path, options = {}) {
   if (!API_BASE_URL) {
     throw new Error("API adresi bulunamadı. .env dosyasını kontrol edin.");
   }
 
-  const response = await fetch(buildUrl(path, options.params), {
+  return requestJson(path, {
+    baseUrl: API_BASE_URL,
     method: options.method ?? "GET",
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    params: options.params,
+    headers: options.headers,
+    body: options.body,
     signal: options.signal,
-    credentials: options.credentials
+    credentials: options.credentials,
+    defaultErrorMessage: "API isteği başarısız oldu.",
+    resolveErrorMessage(data) {
+      const detail = data?.detail;
+      return Array.isArray(detail)
+        ? detail.map((item) => item.msg).filter(Boolean).join(" ")
+        : detail || data?.message;
+    }
   });
-
-  const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
-
-  if (!response.ok) {
-    const detail = data?.detail;
-    const message = Array.isArray(detail)
-      ? detail.map((item) => item.msg).filter(Boolean).join(" ")
-      : detail || data?.message || "API isteği başarısız oldu.";
-    const error = new Error(message);
-    error.status = response.status;
-    throw error;
-  }
-
-  return data;
 }
 
 export function checkHealth(options = {}) {
@@ -97,7 +72,7 @@ export function getOrderDetail(orderId, userId, options = {}) {
 }
 
 export function getAnalyticsDashboard(
-  { topProductLimit = 5, ruleLimit = 10, days = 30 } = {},
+  { topProductLimit = 10, ruleLimit = 10, days = 30 } = {},
   options = {}
 ) {
   return request("/admin/analytics/dashboard", {
@@ -125,7 +100,7 @@ export function getRecommendations(basketProductIds, limit = 3, options = {}) {
     ...options,
     method: "POST",
     body: {
-      basket_product_ids: Array.from(new Set(basketProductIds)),
+      basket_product_ids: getUniqueValues(basketProductIds),
       limit
     }
   });

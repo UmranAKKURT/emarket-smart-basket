@@ -1,4 +1,4 @@
-import { getProducts } from "./api.js";
+import { getAnalyticsDashboard, getProducts } from "./api.js";
 
 describe("api URL construction", () => {
   beforeEach(() => {
@@ -17,5 +17,18 @@ describe("api URL construction", () => {
     const requestedUrl = new URL(fetchMock.mock.calls[0][0]);
     expect(requestedUrl.pathname).toBe("/api/v1/products");
     expect(requestedUrl.searchParams.get("category")).toBe("İçecek");
+  });
+
+  it("requests the first ten products for the admin dashboard", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => "{}"
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getAnalyticsDashboard();
+
+    const requestedUrl = new URL(fetchMock.mock.calls[0][0]);
+    expect(requestedUrl.searchParams.get("top_product_limit")).toBe("10");
   });
 });

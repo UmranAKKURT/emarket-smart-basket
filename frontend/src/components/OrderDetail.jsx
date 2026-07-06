@@ -1,13 +1,31 @@
+import { useEffect, useRef } from "react";
+
 import { formatCurrency } from "../utils/currency.js";
+import LoadingSpinner from "./LoadingSpinner.jsx";
 
 function OrderDetail({ detail, loading, error, onBack, onClose }) {
+  const panelRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof panelRef.current?.scrollIntoView !== "function") {
+      return;
+    }
+
+    panelRef.current.scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
+  }, []);
+
   return (
     <div className="order-panel-backdrop" role="presentation">
       <section
         className="order-panel"
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="order-detail-title"
+        tabIndex={-1}
       >
         <div className="order-panel-header">
           <button className="text-button" type="button" onClick={onBack}>
@@ -19,7 +37,9 @@ function OrderDetail({ detail, loading, error, onBack, onClose }) {
         </div>
 
         {loading && (
-          <p className="order-panel-state">Sipariş detayı yükleniyor...</p>
+          <div className="order-panel-state">
+            <LoadingSpinner label="Sipariş detayı yükleniyor..." />
+          </div>
         )}
 
         {!loading && error && (

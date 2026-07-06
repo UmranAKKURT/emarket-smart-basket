@@ -5,6 +5,11 @@ import {
   loadCart,
   saveCart
 } from "../utils/storage.js";
+import {
+  getCartItemCount,
+  getCartTotal,
+  getUniqueProductIds
+} from "../utils/cart.js";
 
 export function useCart() {
   const [cart, setCart] = useState(() => loadCart());
@@ -85,24 +90,11 @@ export function useCart() {
     setCart([]);
   }, []);
 
-  const cartItemCount = useMemo(
-    () => cart.reduce((total, item) => total + item.quantity, 0),
-    [cart]
-  );
+  const cartItemCount = useMemo(() => getCartItemCount(cart), [cart]);
 
-  const cartTotal = useMemo(
-    () =>
-      cart.reduce(
-        (total, item) => total + Number(item.price) * item.quantity,
-        0
-      ),
-    [cart]
-  );
+  const cartTotal = useMemo(() => getCartTotal(cart), [cart]);
 
-  const basketProductIds = useMemo(
-    () => Array.from(new Set(cart.map((item) => item.id))),
-    [cart]
-  );
+  const basketProductIds = useMemo(() => getUniqueProductIds(cart), [cart]);
 
   return {
     cart,

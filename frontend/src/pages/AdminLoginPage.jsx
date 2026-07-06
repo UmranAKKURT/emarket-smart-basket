@@ -2,6 +2,8 @@ import { useRef, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 
 import { useAdminAuth } from "../hooks/useAdminAuth.js";
+import { useToast } from "../hooks/useToast.js";
+import LoadingSpinner from "../components/LoadingSpinner.jsx";
 
 function AdminLoginPage() {
   const { login, isAuthLoading, isAuthenticated, authError } = useAdminAuth();
@@ -9,6 +11,7 @@ function AdminLoginPage() {
   const [password, setPassword] = useState("");
   const submitting = useRef(false);
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
   if (isAuthenticated) return <Navigate to="/admin" replace />;
 
@@ -18,9 +21,18 @@ function AdminLoginPage() {
     submitting.current = true;
     try {
       await login(email, password);
+      showToast({
+        type: "success",
+        title: "Giriş başarılı",
+        message: "Yönetim paneline yönlendiriliyorsunuz."
+      });
       navigate("/admin", { replace: true });
-    } catch {
-      // Güvenli genel hata context üzerinden gösterilir.
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: "Giriş yapılamadı",
+        message: error.message || "Bilgilerinizi kontrol edip tekrar deneyin."
+      });
     } finally {
       submitting.current = false;
     }
@@ -42,7 +54,7 @@ function AdminLoginPage() {
         </label>
         {authError && <div className="alert" role="alert">{authError}</div>}
         <button type="submit" disabled={isAuthLoading}>
-          {isAuthLoading ? "Giriş yapılıyor..." : "Giriş Yap"}
+          {isAuthLoading ? <LoadingSpinner label="Giriş yapılıyor..." size="small" /> : "Giriş Yap"}
         </button>
         <Link to="/">← Market ekranına dön</Link>
       </form>
