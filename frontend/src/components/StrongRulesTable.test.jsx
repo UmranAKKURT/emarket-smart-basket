@@ -15,6 +15,10 @@ const rules = [
     confidence: 0.75,
     lift: 1.234,
     support: 0.2,
+    calculation_count: 2,
+    is_active: true,
+    created_at: "2026-07-01T10:00:00+00:00",
+    updated_at: "2026-07-05T10:00:00+00:00",
     context_message: "Birlikte sık tercih ediliyor."
   },
   {
@@ -26,6 +30,10 @@ const rules = [
     confidence: 0.84,
     lift: 1.1,
     support: 0.12,
+    calculation_count: 4,
+    is_active: false,
+    created_at: "2026-07-02T10:00:00+00:00",
+    updated_at: "2026-07-06T10:00:00+00:00",
     context_message: "Kahvaltı sepetlerinde birlikte görülüyor."
   }
 ];
@@ -36,27 +44,26 @@ describe("StrongRulesTable", () => {
 
   beforeEach(() => {
     container = document.createElement("div");
+    document.body.appendChild(container);
     root = createRoot(container);
+    URL.createObjectURL = vi.fn(() => "blob:rules");
+    URL.revokeObjectURL = vi.fn();
   });
 
   afterEach(() => {
     act(() => root.unmount());
+    container.remove();
   });
 
-  it("formats product names and rule metrics", () => {
-    act(() => {
-      root.render(
-        <StrongRulesTable
-          rules={[rules[0]]}
-        />
-      );
-    });
+  it("formats product names, rule metrics and calculation count", () => {
+    act(() => root.render(<StrongRulesTable rules={[rules[0]]} />));
 
     expect(container.textContent).toContain("Salkım Domates");
     expect(container.textContent).toContain("Ezine Peyniri");
     expect(container.textContent).toContain("%75.0");
     expect(container.textContent).toContain("1.23");
     expect(container.textContent).toContain("%20.0");
+    expect(container.textContent).toContain("2 kez");
   });
 
   it("shows an empty data message", () => {
@@ -67,7 +74,7 @@ describe("StrongRulesTable", () => {
     );
   });
 
-  it("filters rules by product name and minimum confidence", () => {
+  it("filters rules by product name and active/passive state", () => {
     act(() => root.render(<StrongRulesTable rules={rules} />));
     const search = container.querySelector('input[type="search"]');
     const valueSetter = Object.getOwnPropertyDescriptor(
@@ -85,15 +92,12 @@ describe("StrongRulesTable", () => {
     expect(container.textContent).toContain("1 kural gösteriliyor");
 
     act(() => {
-      valueSetter.call(search, "");
-      search.dispatchEvent(new Event("input", { bubbles: true }));
-      const select = container.querySelector(".rule-filters select");
-      select.value = "0.8";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
+      const statusSelect = container.querySelector(".rule-filters select");
+      statusSelect.value = "active";
+      statusSelect.dispatchEvent(new Event("change", { bubbles: true }));
     });
 
-    expect(container.textContent).toContain("Süt");
-    expect(container.textContent).not.toContain("Salkım Domates");
+    expect(container.textContent).not.toContain("Süt");
   });
 
   it("sorts by support and highlights the strongest rule", () => {
@@ -107,6 +111,47 @@ describe("StrongRulesTable", () => {
     expect(rows[0].textContent).toContain("Salkım Domates");
     expect(container.querySelector(".rule-row-strongest").textContent)
       .toContain("Süt");
-    expect(container.textContent).toContain("En güçlü kural");
+  });
+
+  it("uses server-side pagination, detail and export callbacks", async () => {
+    const loadRulesPage = vi.fn().mockResolvedValue({
+      rules: [rules[0]],
+      total: 8
+    });
+    const loadRuleDetail = vi.fn().mockResolvedValue(rules[0]);
+    const exportRules = vi.fn().mockResolvedValue(new Blob(["rule_id"]));
+
+    await act(async () => {
+      root.render(
+        <StrongRulesTable
+          rules={[]}
+          loadRulesPage={loadRulesPage}
+          loadRuleDetail={loadRuleDetail}
+          exportRules={exportRules}
+        />
+      );
+    });
+
+    expect(loadRulesPage).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 5, offset: 0, statusFilter: "all" }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+
+    await act(async () => {
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent === "Detay")
+        .click();
+    });
+    expect(loadRuleDetail).toHaveBeenCalledWith(1);
+    expect(container.textContent).toContain("Rule detayı");
+
+    await act(async () => {
+      Array.from(container.querySelectorAll("button"))
+        .find((button) => button.textContent === "CSV Export")
+        .click();
+    });
+    expect(exportRules).toHaveBeenCalledWith(
+      expect.objectContaining({ format: "csv", statusFilter: "all" })
+    );
   });
 });

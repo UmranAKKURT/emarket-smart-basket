@@ -9,6 +9,7 @@ function BasketSidebar({
   products,
   cartTotal,
   recommendation,
+  recommendations = [],
   recommendationLoading,
   recommendationError,
   checkoutResult,
@@ -20,7 +21,8 @@ function BasketSidebar({
   onRemoveFromCart,
   onClearCart,
   onCheckout,
-  onDismissCheckout
+  onDismissCheckout,
+  panelRef
 }) {
   const recommendedProduct = useMemo(() => {
     if (!recommendation) {
@@ -39,7 +41,7 @@ function BasketSidebar({
   );
 
   return (
-    <aside className="basket-column">
+    <aside className="basket-column" ref={panelRef}>
       <CartPanel
         cart={cart}
         total={cartTotal}
@@ -57,7 +59,9 @@ function BasketSidebar({
       />
       <RecommendationBox
         recommendation={recommendation}
+        recommendations={recommendations}
         recommendedProduct={recommendedProduct}
+        products={products}
         loading={recommendationLoading}
         error={recommendationError}
         hasCartItems={cart.length > 0}
@@ -69,4 +73,3 @@ function BasketSidebar({
 }
 
 export default BasketSidebar;
-

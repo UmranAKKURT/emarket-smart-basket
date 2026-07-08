@@ -2,11 +2,23 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
-const mocks = vi.hoisted(() => ({ logout: vi.fn(), getDashboard: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  logout: vi.fn(),
+  getDashboard: vi.fn(),
+  getRulesPage: vi.fn(),
+  getRuleDetail: vi.fn(),
+  exportRules: vi.fn()
+}));
 vi.mock("../hooks/useAdminAuth.js", () => ({
   useAdminAuth: () => ({ adminUser: { email: "admin@example.com" }, logout: mocks.logout })
 }));
-vi.mock("../services/api.js", () => ({ getAnalyticsDashboard: mocks.getDashboard }));
+vi.mock("../services/api.js", () => ({
+  getAnalyticsDashboard: mocks.getDashboard,
+  getAnalyticsDashboardStreamUrl: () => "/api/v1/admin/analytics/dashboard/stream",
+  getAssociationRulesPage: mocks.getRulesPage,
+  getAssociationRuleDetail: mocks.getRuleDetail,
+  exportAssociationRules: mocks.exportRules
+}));
 
 import AdminDashboardPage from "./AdminDashboardPage.jsx";
 
@@ -21,15 +33,25 @@ const data = {
     unique_customers: 1,
     total_products: 34,
     total_categories: 7,
+    total_association_rules: 4,
+    active_rule_count: 4,
     last_order_at: "2026-07-05T09:30:00+00:00",
     most_recommended_product: null
   },
+  period_metrics: {
+    last_7_day_orders: 1,
+    last_30_day_orders: 1,
+    daily_average_orders: 0.03,
+    daily_average_revenue: 0.33
+  },
+  top_product_pairs: [],
   top_products: [], category_sales: [], daily_sales: [], strongest_rules: []
 };
 
 describe("AdminDashboardPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getRulesPage.mockResolvedValue({ rules: [], total: 0 });
   });
 
   it("shows admin email and dashboard data", async () => {
@@ -71,3 +93,6 @@ describe("AdminDashboardPage", () => {
     act(() => root.unmount());
   });
 });
+
+
+

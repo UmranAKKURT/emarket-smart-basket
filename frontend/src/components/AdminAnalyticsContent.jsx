@@ -1,17 +1,18 @@
 import { ANALYTICS_DAY_OPTIONS } from "../config/constants.js";
-import { formatCurrency } from "../utils/currency.js";
-import { formatDateTime } from "../utils/date.js";
+import {
+  exportAssociationRules,
+  getAssociationRuleDetail,
+  getAssociationRulesPage
+} from "../services/api.js";
 import CategorySalesChart from "./CategorySalesChart.jsx";
-import MetricCard from "./MetricCard.jsx";
+import DashboardOverviewCards from "./DashboardOverviewCards.jsx";
+import DashboardPeriodMetrics from "./DashboardPeriodMetrics.jsx";
+import ProductPairsCard from "./ProductPairsCard.jsx";
 import SalesTrendChart from "./SalesTrendChart.jsx";
 import StrongRulesTable from "./StrongRulesTable.jsx";
 import TopProductsChart from "./TopProductsChart.jsx";
 
 function AdminAnalyticsContent({ dashboard, days, onDaysChange }) {
-  const { summary } = dashboard;
-  const topSellingProduct = dashboard.top_products[0];
-  const mostRecommendedProduct = summary.most_recommended_product;
-
   return (
     <div className="admin-dashboard-content">
       <section className="dashboard-overview" aria-labelledby="overview-title">
@@ -23,39 +24,13 @@ function AdminAnalyticsContent({ dashboard, days, onDaysChange }) {
           <span>SQLite verileriyle güncellendi</span>
         </div>
 
-        <div className="metrics-grid" aria-label="Yönetim özeti">
-          <MetricCard icon="🧾" title="Toplam Sipariş" value={summary.total_orders} tone="primary" />
-          <MetricCard icon="📦" title="Toplam Satılan Ürün" value={summary.total_units_sold} />
-          <MetricCard icon="🏷️" title="Toplam Ürün" value={summary.total_products} />
-          <MetricCard icon="🗂️" title="Toplam Kategori" value={summary.total_categories} />
-          <MetricCard
-            icon={topSellingProduct?.emoji ?? "🏆"}
-            title="En Çok Satan Ürün"
-            value={topSellingProduct?.product_name ?? "Veri yok"}
-            subtitle={topSellingProduct ? `${topSellingProduct.total_quantity} adet satıldı` : undefined}
-            tone="highlight"
-          />
-          <MetricCard
-            icon={mostRecommendedProduct?.emoji ?? "✨"}
-            title="En Çok Önerilen Ürün"
-            value={mostRecommendedProduct?.product_name ?? "Veri yok"}
-            subtitle={mostRecommendedProduct ? `${mostRecommendedProduct.recommendation_count} kuralda öneriliyor` : undefined}
-            tone="highlight"
-          />
-          <MetricCard
-            icon="🧺"
-            title="Ortalama Sepet Tutarı"
-            value={formatCurrency(summary.average_order_value)}
-          />
-          <MetricCard
-            icon="🕒"
-            title="Son Sipariş Tarihi"
-            value={formatDateTime(summary.last_order_at)}
-          />
-          <MetricCard icon="💰" title="Toplam Ciro" value={formatCurrency(summary.total_revenue)} />
-          <MetricCard icon="👥" title="Benzersiz Müşteri" value={summary.unique_customers} />
-        </div>
+        <DashboardOverviewCards
+          summary={dashboard.summary}
+          topProducts={dashboard.top_products}
+        />
       </section>
+
+      <DashboardPeriodMetrics metrics={dashboard.period_metrics} />
 
       <section className="analytics-section analytics-section-wide">
         <div className="analytics-section-heading">
@@ -83,18 +58,18 @@ function AdminAnalyticsContent({ dashboard, days, onDaysChange }) {
         <section className="analytics-section">
           <div className="dashboard-section-heading compact">
             <div>
-              <p className="panel-kicker">Satış payı</p>
-              <h3>Kategori Dağılımı</h3>
+              <p className="panel-kicker">Sepet ilişkileri</p>
+              <h3>En Çok Birlikte Satılan Ürünler</h3>
             </div>
           </div>
-          <CategorySalesChart categories={dashboard.category_sales} />
+          <ProductPairsCard pairs={dashboard.top_product_pairs} />
         </section>
 
         <section className="analytics-section">
           <div className="dashboard-section-heading compact">
             <div>
               <p className="panel-kicker">Ürün performansı</p>
-              <h3>En Çok Satılan İlk 10 Ürün</h3>
+              <h3>En Çok Satılan Ürünler</h3>
             </div>
           </div>
           <TopProductsChart products={dashboard.top_products} />
@@ -102,8 +77,23 @@ function AdminAnalyticsContent({ dashboard, days, onDaysChange }) {
       </div>
 
       <section className="analytics-section">
+        <div className="dashboard-section-heading compact">
+          <div>
+            <p className="panel-kicker">Satış payı</p>
+            <h3>Kategori Dağılımı</h3>
+          </div>
+        </div>
+        <CategorySalesChart categories={dashboard.category_sales} />
+      </section>
+
+      <section className="analytics-section">
         <h3>En Güçlü Association Rule Sonuçları</h3>
-        <StrongRulesTable rules={dashboard.strongest_rules} />
+        <StrongRulesTable
+          rules={dashboard.strongest_rules}
+          loadRulesPage={getAssociationRulesPage}
+          loadRuleDetail={getAssociationRuleDetail}
+          exportRules={exportAssociationRules}
+        />
       </section>
     </div>
   );

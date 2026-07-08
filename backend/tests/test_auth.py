@@ -155,9 +155,14 @@ def test_analytics_requires_admin_and_customer_gets_403(
         "/api/v1/admin/analytics/dashboard",
         "/api/v1/admin/analytics/summary",
         "/api/v1/admin/analytics/top-products",
+        "/api/v1/admin/analytics/top-product-pairs",
         "/api/v1/admin/analytics/categories",
         "/api/v1/admin/analytics/daily-sales",
         "/api/v1/admin/analytics/rules",
+        "/api/v1/admin/analytics/rules/page",
+        "/api/v1/admin/analytics/rules/export",
+        "/api/v1/admin/analytics/rules/detail/1",
+        "/api/v1/admin/analytics/dashboard/stream",
     ],
 )
 def test_every_admin_analytics_endpoint_requires_session(

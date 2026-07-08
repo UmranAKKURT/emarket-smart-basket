@@ -106,18 +106,16 @@ class AssociationRuleMiner:
         return rules
 
     def mine_and_save_rules(self, clear_existing: bool = True) -> int:
-        """
-        Kuralları üretir ve association_rules tablosuna kaydeder.
+        """Kuralları hesaplar ve geçmişi silmeden veritabanına yazar.
 
-        clear_existing=True ise eski kurallar temizlenir.
+        clear_existing parametresi eski çağrılarla geriye uyumluluk için
+        korunur. Yeni profesyonel akışta kurallar silinmez; aynı kural yeniden
+        hesaplanırsa güncellenir, güncel hesapta çıkmayan kurallar pasiflenir.
         """
 
         rules = self.mine_rules()
-
-        if clear_existing:
-            self.rule_repository.clear_rules()
-
         self.rule_repository.insert_many_rules(rules)
+        self.rule_repository.deactivate_rules_not_in(rules)
 
         return len(rules)
 

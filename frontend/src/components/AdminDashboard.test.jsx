@@ -14,6 +14,8 @@ const dashboard = {
     unique_customers: 16,
     total_products: 34,
     total_categories: 7,
+    total_association_rules: 14,
+    active_rule_count: 9,
     last_order_at: "2026-07-05T09:30:00+00:00",
     most_recommended_product: {
       product_id: 7,
@@ -22,6 +24,25 @@ const dashboard = {
       recommendation_count: 3
     }
   },
+  period_metrics: {
+    last_7_day_orders: 8,
+    last_30_day_orders: 22,
+    daily_average_orders: 0.73,
+    daily_average_revenue: 150.69
+  },
+  top_product_pairs: [
+    {
+      first_product_id: 1,
+      first_product_name: "Salkım Domates",
+      first_product_emoji: "🍅",
+      second_product_id: 7,
+      second_product_name: "Ezine Peyniri",
+      second_product_emoji: "🧀",
+      order_count: 6,
+      combined_quantity: 18,
+      support: 0.27
+    }
+  ],
   top_products: [
     {
       product_id: 1,
@@ -123,6 +144,8 @@ describe("AdminDashboard", () => {
 
     expect(container.textContent).toContain("Toplam Sipariş");
     expect(container.textContent).toContain("Toplam Ciro");
+    expect(container.textContent).toContain("Toplam Association Rule");
+    expect(container.textContent).toContain("Aktif Rule Sayısı");
     expect(container.textContent).toContain("Toplam Satılan Ürün");
     expect(container.textContent).toContain("Toplam Ürün");
     expect(container.textContent).toContain("Toplam Kategori");
@@ -130,7 +153,13 @@ describe("AdminDashboard", () => {
     expect(container.textContent).toContain("En Çok Önerilen Ürün");
     expect(container.textContent).toContain("Ortalama Sepet Tutarı");
     expect(container.textContent).toContain("Son Sipariş Tarihi");
-    expect(container.textContent).toContain("En Çok Satılan İlk 10 Ürün");
+    expect(container.textContent).toContain("Yeni Analytics");
+    expect(container.textContent).toContain("Son 7 Gün Sipariş");
+    expect(container.textContent).toContain("Son 30 Gün Sipariş");
+    expect(container.textContent).toContain("Günlük Ortalama Sipariş");
+    expect(container.textContent).toContain("Günlük Ortalama Ciro");
+    expect(container.textContent).toContain("En Çok Birlikte Satılan Ürünler");
+    expect(container.textContent).toContain("En Çok Satılan Ürünler");
     expect(container.textContent).toContain("Kategori Dağılımı");
     expect(container.textContent).toContain("Günlük Sipariş Sayısı");
     expect(container.textContent).toContain(

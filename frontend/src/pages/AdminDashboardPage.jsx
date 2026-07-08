@@ -5,7 +5,10 @@ import AdminDashboard from "../components/AdminDashboard.jsx";
 import { DEFAULT_ANALYTICS_DAYS } from "../config/constants.js";
 import { useAdminAuth } from "../hooks/useAdminAuth.js";
 import { useToast } from "../hooks/useToast.js";
-import { getAnalyticsDashboard } from "../services/api.js";
+import {
+  getAnalyticsDashboard,
+  getAnalyticsDashboardStreamUrl
+} from "../services/api.js";
 
 function AdminDashboardPage() {
   const { adminUser, logout } = useAdminAuth();
@@ -40,6 +43,29 @@ function AdminDashboardPage() {
   useEffect(() => {
     load(DEFAULT_ANALYTICS_DAYS);
   }, [load]);
+
+  useEffect(() => {
+    if (typeof EventSource === "undefined") {
+      return undefined;
+    }
+
+    const stream = new EventSource(
+      getAnalyticsDashboardStreamUrl({ days }),
+      { withCredentials: true }
+    );
+
+    stream.addEventListener("dashboard", (event) => {
+      setDashboard(JSON.parse(event.data));
+      setLoading(false);
+      setError(null);
+    });
+
+    stream.onerror = () => {
+      stream.close();
+    };
+
+    return () => stream.close();
+  }, [days]);
 
   const handleLogout = useCallback(async () => {
     await logout();

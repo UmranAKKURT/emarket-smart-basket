@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
@@ -7,16 +7,16 @@ from typing import Iterable
 
 class EMarketDBHelper:
     """
-    E-Market Smart Basket projesinin veritabanı kurulum ve seed katmanı.
+    E-Market Smart Basket projesinin veritabanÄ± kurulum ve seed katmanÄ±.
 
-    Bu sınıf sadece veri katmanından sorumludur:
-    - SQLite bağlantısını yönetir.
-    - Tabloları oluşturur.
-    - Örnek ürünleri ekler.
-    - Örnek sipariş geçmişini ekler.
+    Bu sÄ±nÄ±f sadece veri katmanÄ±ndan sorumludur:
+    - SQLite baÄŸlantÄ±sÄ±nÄ± yÃ¶netir.
+    - TablolarÄ± oluÅŸturur.
+    - Ã–rnek Ã¼rÃ¼nleri ekler.
+    - Ã–rnek sipariÅŸ geÃ§miÅŸini ekler.
 
     Not:
-    Bu sınıf API, frontend, öneri motoru veya rule mining işlemi yapmaz.
+    Bu sÄ±nÄ±f API, frontend, Ã¶neri motoru veya rule mining iÅŸlemi yapmaz.
     """
 
     def __init__(self, db_path: str | Path | None = None, auto_initialize: bool = True) -> None:
@@ -30,7 +30,7 @@ class EMarketDBHelper:
 
     def get_connection(self) -> sqlite3.Connection:
         """
-        SQLite bağlantısı oluşturur.
+        SQLite baÄŸlantÄ±sÄ± oluÅŸturur.
         """
 
         connection = sqlite3.connect(self.db_path)
@@ -40,22 +40,23 @@ class EMarketDBHelper:
 
     def initialize_database(self) -> None:
         """
-        Veritabanını hazır hale getirir.
+        VeritabanÄ±nÄ± hazÄ±r hale getirir.
         """
 
         with self.get_connection() as connection:
             self.create_tables(connection)
-            self.create_indexes(connection)
             self.seed_market_data(connection)
             self.seed_order_history(connection)
             self.migrate_order_items_unit_price(connection)
+            self.migrate_association_rules_metadata(connection)
+            self.create_indexes(connection)
             connection.commit()
 
     def migrate_order_items_unit_price(
         self,
         connection: sqlite3.Connection,
     ) -> None:
-        """Sipariş fiyatlarını tarihsel olarak sabitleyen idempotent migration."""
+        """SipariÅŸ fiyatlarÄ±nÄ± tarihsel olarak sabitleyen idempotent migration."""
 
         columns = connection.execute(
             "PRAGMA table_info(order_items);"
@@ -79,9 +80,54 @@ class EMarketDBHelper:
             """
         )
 
+    def migrate_association_rules_metadata(
+        self,
+        connection: sqlite3.Connection,
+    ) -> None:
+        """Association rule geÃ§miÅŸini koruyan idempotent metadata migration."""
+
+        columns = connection.execute(
+            "PRAGMA table_info(association_rules);"
+        ).fetchall()
+        column_names = {column["name"] for column in columns}
+
+        if "updated_at" not in column_names:
+            connection.execute(
+                "ALTER TABLE association_rules ADD COLUMN updated_at TEXT;"
+            )
+
+        if "calculation_count" not in column_names:
+            connection.execute(
+                """
+                ALTER TABLE association_rules
+                ADD COLUMN calculation_count INTEGER NOT NULL DEFAULT 1;
+                """
+            )
+
+        if "is_active" not in column_names:
+            connection.execute(
+                """
+                ALTER TABLE association_rules
+                ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;
+                """
+            )
+
+        connection.execute(
+            """
+            UPDATE association_rules
+            SET
+                updated_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP),
+                calculation_count = CASE
+                    WHEN calculation_count IS NULL OR calculation_count < 1 THEN 1
+                    ELSE calculation_count
+                END,
+                is_active = COALESCE(is_active, 1);
+            """
+        )
+
     def create_tables(self, connection: sqlite3.Connection) -> None:
         """
-        Proje için gerekli tabloları oluşturur.
+        Proje iÃ§in gerekli tablolarÄ± oluÅŸturur.
         """
 
         connection.execute(
@@ -140,6 +186,9 @@ class EMarketDBHelper:
                 lift REAL NOT NULL CHECK(lift >= 0),
                 context_message TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                calculation_count INTEGER NOT NULL DEFAULT 1 CHECK(calculation_count >= 1),
+                is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
 
                 UNIQUE(antecedent_product_id, consequent_product_id),
 
@@ -194,7 +243,7 @@ class EMarketDBHelper:
 
     def create_indexes(self, connection: sqlite3.Connection) -> None:
         """
-        Sorguların daha hızlı çalışması için temel indexleri oluşturur.
+        SorgularÄ±n daha hÄ±zlÄ± Ã§alÄ±ÅŸmasÄ± iÃ§in temel indexleri oluÅŸturur.
         """
 
         connection.execute(
@@ -233,6 +282,27 @@ class EMarketDBHelper:
         )
 
         connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_rules_active_strength
+            ON association_rules(is_active, confidence DESC, lift DESC, support DESC);
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_rules_created_at
+            ON association_rules(created_at);
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_rules_updated_at
+            ON association_rules(updated_at);
+            """
+        )
+
+        connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);"
         )
         connection.execute(
@@ -254,12 +324,38 @@ class EMarketDBHelper:
             """
         )
 
+    @staticmethod
+    def _decode_seed_text(value: str) -> str:
+        """Eski mojibake seed metinlerini gerçek UTF-8 metne çevirir."""
+
+        try:
+            return value.encode("cp1254").decode("utf-8")
+        except UnicodeError:
+            return value
+
+    @classmethod
+    def _normalize_seed_product(
+        cls,
+        product: tuple[int, str, float, str, str],
+    ) -> tuple[int, str, float, str, str]:
+        product_id, name, price, category, emoji = product
+        return (
+            product_id,
+            cls._decode_seed_text(name),
+            price,
+            cls._decode_seed_text(category),
+            cls._decode_seed_text(emoji),
+        )
+
     def seed_market_data(self, connection: sqlite3.Connection) -> None:
         """
-        Örnek market ürünlerini veritabanına ekler.
+        Ã–rnek market Ã¼rÃ¼nlerini veritabanÄ±na ekler.
         """
 
-        products = self._get_seed_products()
+        products = [
+            self._normalize_seed_product(product)
+            for product in self._get_seed_products()
+        ]
 
         connection.executemany(
             """
@@ -271,13 +367,38 @@ class EMarketDBHelper:
             products,
         )
 
+        connection.executemany(
+            """
+            UPDATE products
+            SET name = ?,
+                price = ?,
+                category = ?,
+                emoji = ?
+            WHERE id = ?;
+            """,
+            [
+                (name, price, category, emoji, product_id)
+                for product_id, name, price, category, emoji in products
+            ],
+        )
+
     def seed_order_history(self, connection: sqlite3.Connection) -> None:
         """
-        Örnek sipariş geçmişini veritabanına ekler.
+        Ã–rnek sipariÅŸ geÃ§miÅŸini veritabanÄ±na ekler.
 
-        Bu siparişler ilerleyen günlerde rule_miner.py tarafından analiz edilecek.
-        Association rule tablosu bu aşamada elle doldurulmaz.
+        Bu sipariÅŸler ilerleyen gÃ¼nlerde rule_miner.py tarafÄ±ndan analiz edilecek.
+        Association rule tablosu bu aÅŸamada elle doldurulmaz.
         """
+
+        existing_items = connection.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM order_items;
+            """
+        ).fetchone()
+
+        if int(existing_items["total"]) > 0:
+            return
 
         orders = self._get_seed_orders()
 
@@ -308,7 +429,7 @@ class EMarketDBHelper:
 
     def _get_product_id_map(self, connection: sqlite3.Connection) -> dict[str, int]:
         """
-        Ürün adlarını ürün id değerleriyle eşleştirir.
+        ÃœrÃ¼n adlarÄ±nÄ± Ã¼rÃ¼n id deÄŸerleriyle eÅŸleÅŸtirir.
         """
 
         rows = connection.execute(
@@ -326,17 +447,18 @@ class EMarketDBHelper:
         order_baskets: dict[int, list[tuple[str, int]]],
     ) -> list[tuple[int, int, int]]:
         """
-        Ürün isimlerinden order_items tablosuna yazılacak kayıtları üretir.
+        ÃœrÃ¼n isimlerinden order_items tablosuna yazÄ±lacak kayÄ±tlarÄ± Ã¼retir.
         """
 
         order_items: list[tuple[int, int, int]] = []
 
         for order_id, basket_items in order_baskets.items():
             for product_name, quantity in basket_items:
-                product_id = product_id_map.get(product_name)
+                normalized_product_name = self._decode_seed_text(product_name)
+                product_id = product_id_map.get(normalized_product_name) or product_id_map.get(product_name)
 
                 if product_id is None:
-                    raise ValueError(f"Seed verisinde bulunamayan ürün: {product_name}")
+                    raise ValueError(f"Seed verisinde bulunamayan Ã¼rÃ¼n: {product_name}")
 
                 order_items.append((order_id, product_id, quantity))
 
@@ -345,63 +467,63 @@ class EMarketDBHelper:
     @staticmethod
     def _get_seed_products() -> list[tuple[int, str, float, str, str]]:
         """
-        Getir / Trendyol Market tarzı örnek ürünler.
+        Getir / Trendyol Market tarzÄ± Ã¶rnek Ã¼rÃ¼nler.
         """
 
         return [
             # Meyve & Sebze
-            (1, "Salkım Domates", 39.90, "Meyve & Sebze", "🍅"),
-            (2, "Soğan", 24.90, "Meyve & Sebze", "🧅"),
-            (3, "Limon", 29.90, "Meyve & Sebze", "🍋"),
-            (4, "Muz", 54.90, "Meyve & Sebze", "🍌"),
-            (5, "Elma", 42.50, "Meyve & Sebze", "🍎"),
-            (6, "Salatalık", 34.90, "Meyve & Sebze", "🥒"),
+            (1, "SalkÄ±m Domates", 39.90, "Meyve & Sebze", "ğŸ…"),
+            (2, "SoÄŸan", 24.90, "Meyve & Sebze", "ğŸ§…"),
+            (3, "Limon", 29.90, "Meyve & Sebze", "ğŸ‹"),
+            (4, "Muz", 54.90, "Meyve & Sebze", "ğŸŒ"),
+            (5, "Elma", 42.50, "Meyve & Sebze", "ğŸ"),
+            (6, "SalatalÄ±k", 34.90, "Meyve & Sebze", "ğŸ¥’"),
 
-            # Süt Ürünleri
-            (7, "Ezine Peyniri", 129.90, "Süt Ürünleri", "🧀"),
-            (8, "Tam Yağlı Süt", 34.90, "Süt Ürünleri", "🥛"),
-            (9, "Yoğurt", 49.90, "Süt Ürünleri", "🥣"),
-            (10, "Tereyağı", 99.90, "Süt Ürünleri", "🧈"),
-            (11, "Kaşar Peyniri", 119.90, "Süt Ürünleri", "🧀"),
-            (12, "Ayran", 17.50, "Süt Ürünleri", "🥛"),
+            # SÃ¼t ÃœrÃ¼nleri
+            (7, "Ezine Peyniri", 129.90, "SÃ¼t ÃœrÃ¼nleri", "ğŸ§€"),
+            (8, "Tam YaÄŸlÄ± SÃ¼t", 34.90, "SÃ¼t ÃœrÃ¼nleri", "ğŸ¥›"),
+            (9, "YoÄŸurt", 49.90, "SÃ¼t ÃœrÃ¼nleri", "ğŸ¥£"),
+            (10, "TereyaÄŸÄ±", 99.90, "SÃ¼t ÃœrÃ¼nleri", "ğŸ§ˆ"),
+            (11, "KaÅŸar Peyniri", 119.90, "SÃ¼t ÃœrÃ¼nleri", "ğŸ§€"),
+            (12, "Ayran", 17.50, "SÃ¼t ÃœrÃ¼nleri", "ğŸ¥›"),
 
-            # Atıştırmalık
-            (13, "Patates Cipsi", 44.90, "Atıştırmalık", "🥔"),
-            (14, "Çikolata", 32.50, "Atıştırmalık", "🍫"),
-            (15, "Kraker", 24.90, "Atıştırmalık", "🥨"),
-            (16, "Kuruyemiş Karışık", 89.90, "Atıştırmalık", "🥜"),
-            (17, "Bisküvi", 27.90, "Atıştırmalık", "🍪"),
+            # AtÄ±ÅŸtÄ±rmalÄ±k
+            (13, "Patates Cipsi", 44.90, "AtÄ±ÅŸtÄ±rmalÄ±k", "ğŸ¥”"),
+            (14, "Ã‡ikolata", 32.50, "AtÄ±ÅŸtÄ±rmalÄ±k", "ğŸ«"),
+            (15, "Kraker", 24.90, "AtÄ±ÅŸtÄ±rmalÄ±k", "ğŸ¥¨"),
+            (16, "KuruyemiÅŸ KarÄ±ÅŸÄ±k", 89.90, "AtÄ±ÅŸtÄ±rmalÄ±k", "ğŸ¥œ"),
+            (17, "BiskÃ¼vi", 27.90, "AtÄ±ÅŸtÄ±rmalÄ±k", "ğŸª"),
 
-            # İçecek
-            (18, "Kola", 39.90, "İçecek", "🥤"),
-            (19, "Maden Suyu", 14.90, "İçecek", "🫧"),
-            (20, "Portakal Suyu", 49.90, "İçecek", "🧃"),
-            (21, "Soğuk Çay", 36.90, "İçecek", "🧋"),
+            # Ä°Ã§ecek
+            (18, "Kola", 39.90, "Ä°Ã§ecek", "ğŸ¥¤"),
+            (19, "Maden Suyu", 14.90, "Ä°Ã§ecek", "ğŸ«§"),
+            (20, "Portakal Suyu", 49.90, "Ä°Ã§ecek", "ğŸ§ƒ"),
+            (21, "SoÄŸuk Ã‡ay", 36.90, "Ä°Ã§ecek", "ğŸ§‹"),
 
             # Et & Tavuk
-            (22, "Dana Kıyma", 249.90, "Et & Tavuk", "🥩"),
-            (23, "Tavuk Göğsü", 139.90, "Et & Tavuk", "🍗"),
-            (24, "Sucuk", 189.90, "Et & Tavuk", "🌭"),
-            (25, "Köfte", 219.90, "Et & Tavuk", "🍖"),
+            (22, "Dana KÄ±yma", 249.90, "Et & Tavuk", "ğŸ¥©"),
+            (23, "Tavuk GÃ¶ÄŸsÃ¼", 139.90, "Et & Tavuk", "ğŸ—"),
+            (24, "Sucuk", 189.90, "Et & Tavuk", "ğŸŒ­"),
+            (25, "KÃ¶fte", 219.90, "Et & Tavuk", "ğŸ–"),
 
-            # Kahvaltılık
-            (26, "Yumurta", 74.90, "Kahvaltılık", "🥚"),
-            (27, "Zeytin", 84.90, "Kahvaltılık", "🫒"),
-            (28, "Bal", 149.90, "Kahvaltılık", "🍯"),
-            (29, "Reçel", 79.90, "Kahvaltılık", "🍓"),
-            (30, "Ekmek", 12.50, "Kahvaltılık", "🍞"),
+            # KahvaltÄ±lÄ±k
+            (26, "Yumurta", 74.90, "KahvaltÄ±lÄ±k", "ğŸ¥š"),
+            (27, "Zeytin", 84.90, "KahvaltÄ±lÄ±k", "ğŸ«’"),
+            (28, "Bal", 149.90, "KahvaltÄ±lÄ±k", "ğŸ¯"),
+            (29, "ReÃ§el", 79.90, "KahvaltÄ±lÄ±k", "ğŸ“"),
+            (30, "Ekmek", 12.50, "KahvaltÄ±lÄ±k", "ğŸ"),
 
-            # Temel Gıda
-            (31, "Makarna", 24.90, "Temel Gıda", "🍝"),
-            (32, "Pirinç", 89.90, "Temel Gıda", "🍚"),
-            (33, "Un", 59.90, "Temel Gıda", "🌾"),
-            (34, "Zeytinyağı", 189.90, "Temel Gıda", "🫒"),
+            # Temel GÄ±da
+            (31, "Makarna", 24.90, "Temel GÄ±da", "ğŸ"),
+            (32, "PirinÃ§", 89.90, "Temel GÄ±da", "ğŸš"),
+            (33, "Un", 59.90, "Temel GÄ±da", "ğŸŒ¾"),
+            (34, "ZeytinyaÄŸÄ±", 189.90, "Temel GÄ±da", "ğŸ«’"),
         ]
 
     @staticmethod
     def _get_seed_orders() -> list[tuple[int, int, str]]:
         """
-        Örnek sipariş üst bilgileri.
+        Ã–rnek sipariÅŸ Ã¼st bilgileri.
         """
 
         return [
@@ -425,61 +547,61 @@ class EMarketDBHelper:
     @staticmethod
     def _get_seed_order_baskets() -> dict[int, list[tuple[str, int]]]:
         """
-        Örnek sepet geçmişi.
+        Ã–rnek sepet geÃ§miÅŸi.
 
-        Bu veriler bilinçli şekilde tekrar eden kombinasyonlar içerir.
-        Böylece ilerleyen günlerde association rule mining çalıştığında
-        anlamlı ürün ilişkileri çıkarılabilir.
+        Bu veriler bilinÃ§li ÅŸekilde tekrar eden kombinasyonlar iÃ§erir.
+        BÃ¶ylece ilerleyen gÃ¼nlerde association rule mining Ã§alÄ±ÅŸtÄ±ÄŸÄ±nda
+        anlamlÄ± Ã¼rÃ¼n iliÅŸkileri Ã§Ä±karÄ±labilir.
         """
 
         return {
-            # Kahvaltı sepetleri: Domates + Peynir + Zeytin + Ekmek
+            # KahvaltÄ± sepetleri: Domates + Peynir + Zeytin + Ekmek
             1: [
-                ("Salkım Domates", 1),
+                ("SalkÄ±m Domates", 1),
                 ("Ezine Peyniri", 1),
                 ("Zeytin", 1),
                 ("Ekmek", 2),
                 ("Yumurta", 1),
             ],
             2: [
-                ("Salkım Domates", 1),
+                ("SalkÄ±m Domates", 1),
                 ("Ezine Peyniri", 1),
                 ("Zeytin", 1),
                 ("Ekmek", 1),
             ],
             3: [
-                ("Salkım Domates", 1),
+                ("SalkÄ±m Domates", 1),
                 ("Ezine Peyniri", 1),
-                ("Salatalık", 1),
+                ("SalatalÄ±k", 1),
                 ("Ekmek", 1),
-                ("Çay", 1) if False else ("Tam Yağlı Süt", 1),
+                ("Ã‡ay", 1) if False else ("Tam YaÄŸlÄ± SÃ¼t", 1),
             ],
 
-            # Yemek sepetleri: Kıyma + Soğan + Makarna
+            # Yemek sepetleri: KÄ±yma + SoÄŸan + Makarna
             4: [
-                ("Dana Kıyma", 1),
-                ("Soğan", 2),
+                ("Dana KÄ±yma", 1),
+                ("SoÄŸan", 2),
                 ("Makarna", 2),
-                ("Yoğurt", 1),
+                ("YoÄŸurt", 1),
             ],
             5: [
-                ("Dana Kıyma", 1),
-                ("Soğan", 2),
-                ("Pirinç", 1),
-                ("Yoğurt", 1),
+                ("Dana KÄ±yma", 1),
+                ("SoÄŸan", 2),
+                ("PirinÃ§", 1),
+                ("YoÄŸurt", 1),
             ],
             6: [
-                ("Dana Kıyma", 1),
-                ("Soğan", 1),
+                ("Dana KÄ±yma", 1),
+                ("SoÄŸan", 1),
                 ("Makarna", 1),
-                ("Zeytinyağı", 1),
+                ("ZeytinyaÄŸÄ±", 1),
             ],
 
-            # Atıştırmalık sepetleri: Cips + Kola + Çikolata
+            # AtÄ±ÅŸtÄ±rmalÄ±k sepetleri: Cips + Kola + Ã‡ikolata
             7: [
                 ("Patates Cipsi", 2),
                 ("Kola", 1),
-                ("Çikolata", 1),
+                ("Ã‡ikolata", 1),
             ],
             8: [
                 ("Patates Cipsi", 1),
@@ -489,44 +611,44 @@ class EMarketDBHelper:
             9: [
                 ("Patates Cipsi", 1),
                 ("Kola", 1),
-                ("Çikolata", 2),
-                ("Kuruyemiş Karışık", 1),
+                ("Ã‡ikolata", 2),
+                ("KuruyemiÅŸ KarÄ±ÅŸÄ±k", 1),
             ],
 
-            # Tavuk hazırlık sepetleri: Tavuk + Limon + Yoğurt
+            # Tavuk hazÄ±rlÄ±k sepetleri: Tavuk + Limon + YoÄŸurt
             10: [
-                ("Tavuk Göğsü", 1),
+                ("Tavuk GÃ¶ÄŸsÃ¼", 1),
                 ("Limon", 2),
-                ("Yoğurt", 1),
-                ("Pirinç", 1),
+                ("YoÄŸurt", 1),
+                ("PirinÃ§", 1),
             ],
             11: [
-                ("Tavuk Göğsü", 1),
+                ("Tavuk GÃ¶ÄŸsÃ¼", 1),
                 ("Limon", 1),
                 ("Ayran", 2),
                 ("Makarna", 1),
             ],
             12: [
-                ("Tavuk Göğsü", 1),
-                ("Yoğurt", 1),
-                ("Zeytinyağı", 1),
+                ("Tavuk GÃ¶ÄŸsÃ¼", 1),
+                ("YoÄŸurt", 1),
+                ("ZeytinyaÄŸÄ±", 1),
                 ("Limon", 1),
             ],
 
-            # Smoothie / ara öğün sepetleri: Muz + Süt
+            # Smoothie / ara Ã¶ÄŸÃ¼n sepetleri: Muz + SÃ¼t
             13: [
                 ("Muz", 1),
-                ("Tam Yağlı Süt", 1),
+                ("Tam YaÄŸlÄ± SÃ¼t", 1),
                 ("Bal", 1),
             ],
             14: [
                 ("Muz", 2),
-                ("Tam Yağlı Süt", 1),
-                ("Bisküvi", 1),
+                ("Tam YaÄŸlÄ± SÃ¼t", 1),
+                ("BiskÃ¼vi", 1),
             ],
             15: [
                 ("Elma", 1),
-                ("Kuruyemiş Karışık", 1),
+                ("KuruyemiÅŸ KarÄ±ÅŸÄ±k", 1),
                 ("Maden Suyu", 2),
             ],
         }
@@ -534,4 +656,7 @@ class EMarketDBHelper:
 
 if __name__ == "__main__":
     db_helper = EMarketDBHelper()
-    print(f"Veritabanı başarıyla hazırlandı: {db_helper.db_path}")
+    print(f"VeritabanÄ± baÅŸarÄ±yla hazÄ±rlandÄ±: {db_helper.db_path}")
+
+
+

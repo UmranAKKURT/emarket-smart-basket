@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import (
     APIRouter,
@@ -10,12 +12,14 @@ from fastapi import (
     Depends,
     FastAPI,
     HTTPException,
+    Path,
     Query,
     Request,
     Response,
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from src.analytics_repository import AnalyticsRepository
 from src.analytics_service import AnalyticsService
 from src.auth_dependencies import get_current_user, require_admin, require_admin_csrf
@@ -26,6 +30,7 @@ from src.engine import RecommendationEngine
 from src.exception_handlers import register_exception_handlers
 from src.logging_config import configure_logging
 from src.order_service import OrderService
+from src.recommendation_service import RecommendationService
 from src.repository import (
     AssociationRuleRepository,
     OrderRepository,
@@ -56,6 +61,7 @@ from src.schemas import (
     AdminUserResponse,
     AnalyticsDashboardResponse,
     AnalyticsSummaryResponse,
+    AssociationRulePageResponse,
     CategorySalesResponse,
     CategoryListResponse,
     CreateOrderRequest,
@@ -71,6 +77,7 @@ from src.schemas import (
     RecommendationResponse,
     RuleRebuildResponse,
     StrongRuleResponse,
+    TopProductPairResponse,
     TopProductResponse,
 )
 
@@ -125,6 +132,9 @@ class ApplicationContainer:
             rule_repository=self.rule_repository,
             min_confidence=0.50,
             min_lift=1.00,
+        )
+        self.recommendation_service = RecommendationService(
+            self.recommendation_engine
         )
 
     def initialize(self) -> None:
@@ -436,7 +446,7 @@ def get_recommendations(
     Sepette bulunan ürünlere göre en güçlü önerileri oluşturur.
     """
 
-    recommendations = container.recommendation_engine.recommend(
+    recommendations = container.recommendation_service.get_recommendations(
         basket_product_ids=request_body.basket_product_ids,
         limit=request_body.limit,
     )
@@ -474,17 +484,65 @@ def get_analytics_dashboard(
         int,
         Query(ge=MIN_ANALYTICS_DAYS, le=MAX_ANALYTICS_DAYS),
     ] = 30,
+    pair_limit: Annotated[
+        int,
+        Query(ge=MIN_TOP_PRODUCT_LIMIT, le=MAX_TOP_PRODUCT_LIMIT),
+    ] = 10,
 ) -> AnalyticsDashboardResponse:
     return AnalyticsDashboardResponse(
         summary=container.analytics_service.get_dashboard_summary(),
+        period_metrics=container.analytics_service.get_dashboard_period_metrics(
+            days
+        ),
         top_products=container.analytics_service.get_top_products(
             top_product_limit
+        ),
+        top_product_pairs=container.analytics_service.get_top_product_pairs(
+            pair_limit
         ),
         category_sales=container.analytics_service.get_category_sales(),
         daily_sales=container.analytics_service.get_daily_sales(days),
         strongest_rules=container.analytics_service.get_strongest_rules(
             rule_limit
         ),
+    )
+
+
+@router.get(
+    "/admin/analytics/dashboard/stream",
+    tags=["Admin Analytics"],
+    dependencies=[Depends(require_admin)],
+)
+async def stream_analytics_dashboard(
+    container: ContainerDependency,
+    days: Annotated[
+        int,
+        Query(ge=MIN_ANALYTICS_DAYS, le=MAX_ANALYTICS_DAYS),
+    ] = 30,
+) -> StreamingResponse:
+    async def event_stream():
+        while True:
+            dashboard = AnalyticsDashboardResponse(
+                summary=container.analytics_service.get_dashboard_summary(),
+                period_metrics=container.analytics_service.get_dashboard_period_metrics(
+                    days
+                ),
+                top_products=container.analytics_service.get_top_products(10),
+                top_product_pairs=container.analytics_service.get_top_product_pairs(10),
+                category_sales=container.analytics_service.get_category_sales(),
+                daily_sales=container.analytics_service.get_daily_sales(days),
+                strongest_rules=container.analytics_service.get_strongest_rules(10),
+            )
+            yield (
+                "event: dashboard\n"
+                f"data: {json.dumps(dashboard.model_dump(), ensure_ascii=False)}\n\n"
+            )
+            await asyncio.sleep(5)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache"},
     )
 
 
@@ -518,6 +576,25 @@ def get_top_products_analytics(
     return [
         TopProductResponse(**product)
         for product in container.analytics_service.get_top_products(limit)
+    ]
+
+
+@router.get(
+    "/admin/analytics/top-product-pairs",
+    response_model=list[TopProductPairResponse],
+    tags=["Admin Analytics"],
+    dependencies=[Depends(require_admin)],
+)
+def get_top_product_pairs_analytics(
+    container: ContainerDependency,
+    limit: Annotated[
+        int,
+        Query(ge=MIN_TOP_PRODUCT_LIMIT, le=MAX_TOP_PRODUCT_LIMIT),
+    ] = 10,
+) -> list[TopProductPairResponse]:
+    return [
+        TopProductPairResponse(**pair)
+        for pair in container.analytics_service.get_top_product_pairs(limit)
     ]
 
 
@@ -573,6 +650,118 @@ def get_strongest_rules_analytics(
         for rule in container.analytics_service.get_strongest_rules(limit)
     ]
 
+@router.get(
+    "/admin/analytics/rules/page",
+    response_model=AssociationRulePageResponse,
+    tags=["Admin Analytics"],
+    dependencies=[Depends(require_admin)],
+)
+def get_association_rules_page(
+    container: ContainerDependency,
+    limit: Annotated[
+        int,
+        Query(ge=MIN_RULE_LIMIT, le=MAX_RULE_LIMIT),
+    ] = 5,
+    offset: Annotated[int, Query(ge=MIN_PAGE_OFFSET)] = 0,
+    search: Annotated[str | None, Query(max_length=80)] = None,
+    sort_by: Literal[
+        "confidence",
+        "lift",
+        "support",
+        "created_at",
+        "updated_at",
+    ] = "confidence",
+    sort_direction: Literal["asc", "desc"] = "desc",
+    include_inactive: bool = True,
+    status_filter: Literal["all", "active", "passive"] = "all",
+    min_confidence: Annotated[float | None, Query(ge=0, le=1)] = None,
+    min_lift: Annotated[float | None, Query(ge=0)] = None,
+    min_support: Annotated[float | None, Query(ge=0, le=1)] = None,
+    created_from: Annotated[str | None, Query(max_length=10)] = None,
+    created_to: Annotated[str | None, Query(max_length=10)] = None,
+    updated_from: Annotated[str | None, Query(max_length=10)] = None,
+    updated_to: Annotated[str | None, Query(max_length=10)] = None,
+) -> AssociationRulePageResponse:
+    return AssociationRulePageResponse(
+        **container.analytics_service.get_rules_page(
+            limit=limit,
+            offset=offset,
+            search=search,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
+            include_inactive=include_inactive,
+            status_filter=status_filter,
+            min_confidence=min_confidence,
+            min_lift=min_lift,
+            min_support=min_support,
+            created_from=created_from,
+            created_to=created_to,
+            updated_from=updated_from,
+            updated_to=updated_to,
+        )
+    )
+
+
+@router.get(
+    "/admin/analytics/rules/detail/{rule_id}",
+    response_model=StrongRuleResponse,
+    tags=["Admin Analytics"],
+    dependencies=[Depends(require_admin)],
+)
+def get_association_rule_detail(
+    container: ContainerDependency,
+    rule_id: Annotated[int, Path(ge=MIN_IDENTIFIER)],
+) -> StrongRuleResponse:
+    return StrongRuleResponse(
+        **container.analytics_service.get_rule_detail(rule_id)
+    )
+
+
+@router.get(
+    "/admin/analytics/rules/export",
+    tags=["Admin Analytics"],
+    dependencies=[Depends(require_admin)],
+)
+def export_association_rules(
+    container: ContainerDependency,
+    format: Literal["csv", "xlsx"] = "csv",
+    search: Annotated[str | None, Query(max_length=80)] = None,
+    sort_by: Literal[
+        "confidence",
+        "lift",
+        "support",
+        "created_at",
+        "updated_at",
+    ] = "confidence",
+    sort_direction: Literal["asc", "desc"] = "desc",
+    status_filter: Literal["all", "active", "passive"] = "all",
+    min_confidence: Annotated[float | None, Query(ge=0, le=1)] = None,
+    min_lift: Annotated[float | None, Query(ge=0)] = None,
+    min_support: Annotated[float | None, Query(ge=0, le=1)] = None,
+    created_from: Annotated[str | None, Query(max_length=10)] = None,
+    created_to: Annotated[str | None, Query(max_length=10)] = None,
+    updated_from: Annotated[str | None, Query(max_length=10)] = None,
+    updated_to: Annotated[str | None, Query(max_length=10)] = None,
+) -> Response:
+    content, media_type, filename = container.analytics_service.export_rules(
+        export_format=format,
+        search=search,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+        status_filter=status_filter,
+        min_confidence=min_confidence,
+        min_lift=min_lift,
+        min_support=min_support,
+        created_from=created_from,
+        created_to=created_to,
+        updated_from=updated_from,
+        updated_to=updated_to,
+    )
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 @router.post(
     "/admin/rules/rebuild",

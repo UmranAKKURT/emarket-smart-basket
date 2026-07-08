@@ -70,3 +70,4 @@ def test_unexpected_errors_return_safe_standard_response() -> None:
         "detail": "Beklenmeyen bir sunucu hatası oluştu."
     }
     assert "internal-sensitive-detail" not in response.text
+

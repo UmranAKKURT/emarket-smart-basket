@@ -16,6 +16,8 @@ def test_summary_matches_temporary_database_health(client: TestClient) -> None:
     assert summary["total_revenue"] > 0
     assert summary["total_products"] == health["product_count"]
     assert summary["total_categories"] > 0
+    assert summary["total_association_rules"] == health["rule_count"]
+    assert 0 <= summary["active_rule_count"] <= summary["total_association_rules"]
     assert summary["last_order_at"] is not None
     assert summary["most_recommended_product"]["recommendation_count"] > 0
     assert summary["average_order_value"] == round(
@@ -54,6 +56,29 @@ def test_top_products_reject_invalid_limit(
     )
 
     assert response.status_code == 422
+
+
+def test_top_product_pairs_are_sorted_and_include_support(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/api/v1/admin/analytics/top-product-pairs",
+        params={"limit": 10},
+    )
+
+    assert response.status_code == 200
+    pairs = response.json()
+    assert 0 < len(pairs) <= 10
+    assert {"order_count", "combined_quantity", "support"}.issubset(pairs[0])
+    assert pairs == sorted(
+        pairs,
+        key=lambda pair: (
+            -pair["order_count"],
+            -pair["combined_quantity"],
+            pair["first_product_name"],
+            pair["second_product_name"],
+        ),
+    )
 
 
 def test_category_revenue_shares_sum_to_one(client: TestClient) -> None:
@@ -105,6 +130,53 @@ def test_strongest_rules_include_metrics(client: TestClient) -> None:
     assert {"confidence", "lift", "support"}.issubset(rules[0])
 
 
+def test_rule_history_page_supports_filters_and_detail(client: TestClient) -> None:
+    response = client.get(
+        "/api/v1/admin/analytics/rules/page",
+        params={
+            "limit": 5,
+            "offset": 0,
+            "sort_by": "lift",
+            "sort_direction": "desc",
+            "status_filter": "active",
+            "min_confidence": 0.5,
+            "min_lift": 1,
+            "min_support": 0.01,
+        },
+    )
+
+    assert response.status_code == 200
+    page = response.json()
+    assert page["limit"] == 5
+    assert page["status_filter"] == "active"
+    assert page["rules"]
+    assert all(rule["is_active"] for rule in page["rules"])
+    assert all(rule["calculation_count"] >= 1 for rule in page["rules"])
+
+    detail_response = client.get(
+        f"/api/v1/admin/analytics/rules/detail/{page['rules'][0]['rule_id']}"
+    )
+    assert detail_response.status_code == 200
+    assert detail_response.json()["rule_id"] == page["rules"][0]["rule_id"]
+
+
+def test_rule_history_exports_csv_and_excel(client: TestClient) -> None:
+    csv_response = client.get(
+        "/api/v1/admin/analytics/rules/export",
+        params={"format": "csv", "min_confidence": 0.5},
+    )
+    assert csv_response.status_code == 200
+    assert csv_response.headers["content-type"].startswith("text/csv")
+    assert b"rule_id" in csv_response.content
+
+    xlsx_response = client.get(
+        "/api/v1/admin/analytics/rules/export",
+        params={"format": "xlsx"},
+    )
+    assert xlsx_response.status_code == 200
+    assert xlsx_response.content.startswith(b"PK")
+
+
 def test_dashboard_contains_all_sections(client: TestClient) -> None:
     response = client.get(
         "/api/v1/admin/analytics/dashboard",
@@ -118,7 +190,9 @@ def test_dashboard_contains_all_sections(client: TestClient) -> None:
     assert response.status_code == 200
     assert set(response.json()) == {
         "summary",
+        "period_metrics",
         "top_products",
+        "top_product_pairs",
         "category_sales",
         "daily_sales",
         "strongest_rules",
@@ -129,7 +203,17 @@ def test_dashboard_contains_all_sections(client: TestClient) -> None:
         "total_categories",
         "last_order_at",
         "most_recommended_product",
+        "total_association_rules",
+        "active_rule_count",
     }.issubset(summary)
+    period_metrics = response.json()["period_metrics"]
+    assert {
+        "last_7_day_orders",
+        "last_30_day_orders",
+        "daily_average_orders",
+        "daily_average_revenue",
+    }.issubset(period_metrics)
+    assert response.json()["top_product_pairs"]
 
 
 def test_created_order_stores_database_unit_price(

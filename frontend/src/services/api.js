@@ -1,5 +1,6 @@
 import { API_BASE_URL } from "../config/api.js";
 import { getUniqueValues } from "../utils/array.js";
+import { buildApiUrl } from "../utils/apiUrl.js";
 import { requestJson } from "./httpClient.js";
 
 async function request(path, options = {}) {
@@ -86,6 +87,95 @@ export function getAnalyticsDashboard(
   });
 }
 
+export function getAnalyticsDashboardStreamUrl({ days = 30 } = {}) {
+  return buildApiUrl(API_BASE_URL, "/admin/analytics/dashboard/stream", { days });
+}
+
+export function getAssociationRulesPage({
+  limit = 5,
+  offset = 0,
+  search = "",
+  sortBy = "confidence",
+  sortDirection = "desc",
+  includeInactive = true,
+  statusFilter = "all",
+  minConfidence,
+  minLift,
+  minSupport,
+  createdFrom,
+  createdTo,
+  updatedFrom,
+  updatedTo
+} = {}, options = {}) {
+  return request("/admin/analytics/rules/page", {
+    ...options,
+    credentials: "include",
+    params: {
+      limit,
+      offset,
+      search,
+      sort_by: sortBy,
+      sort_direction: sortDirection,
+      include_inactive: includeInactive,
+      status_filter: statusFilter,
+      min_confidence: minConfidence,
+      min_lift: minLift,
+      min_support: minSupport,
+      created_from: createdFrom,
+      created_to: createdTo,
+      updated_from: updatedFrom,
+      updated_to: updatedTo,
+      ...options.params
+    }
+  });
+}
+
+export function getAssociationRuleDetail(ruleId, options = {}) {
+  return request(`/admin/analytics/rules/detail/${ruleId}`, {
+    ...options,
+    credentials: "include"
+  });
+}
+
+export async function exportAssociationRules({
+  format = "csv",
+  search = "",
+  sortBy = "confidence",
+  sortDirection = "desc",
+  statusFilter = "all",
+  minConfidence,
+  minLift,
+  minSupport,
+  createdFrom,
+  createdTo,
+  updatedFrom,
+  updatedTo
+} = {}, options = {}) {
+  const response = await fetch(buildApiUrl(API_BASE_URL, "/admin/analytics/rules/export", {
+    format,
+    search,
+    sort_by: sortBy,
+    sort_direction: sortDirection,
+    status_filter: statusFilter,
+    min_confidence: minConfidence,
+    min_lift: minLift,
+    min_support: minSupport,
+    created_from: createdFrom,
+    created_to: createdTo,
+    updated_from: updatedFrom,
+    updated_to: updatedTo
+  }), {
+    credentials: "include",
+    signal: options.signal
+  });
+
+  if (!response.ok) {
+    throw new Error("Association rule export işlemi başarısız oldu.");
+  }
+
+  return response.blob();
+}
+
 export function rebuildAssociationRules(csrfToken, options = {}) {
   return request("/admin/rules/rebuild", {
     ...options,
@@ -95,7 +185,7 @@ export function rebuildAssociationRules(csrfToken, options = {}) {
   });
 }
 
-export function getRecommendations(basketProductIds, limit = 3, options = {}) {
+export function getRecommendations(basketProductIds, limit = 5, options = {}) {
   return request("/recommendations", {
     ...options,
     method: "POST",

@@ -78,8 +78,8 @@ class Recommendation:
     support: float
     confidence: float
     lift: float
-
     context_message: str
+    score: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         """
@@ -335,17 +335,19 @@ class RecommendationEngine:
             confidence=float(rule["confidence"]),
             lift=float(rule["lift"]),
             context_message=str(rule["context_message"]),
+            score=0.0,
         )
 
     @staticmethod
     def _recommendation_sort_key(
         recommendation: Recommendation,
-    ) -> tuple[float, float, float]:
+    ) -> tuple[float, float, float, float]:
         """
         Önerilerin sıralama anahtarını döndürür.
         """
 
         return (
+            recommendation.score,
             recommendation.confidence,
             recommendation.lift,
             recommendation.support,

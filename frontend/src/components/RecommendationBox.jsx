@@ -9,7 +9,9 @@ import LoadingSpinner from "./LoadingSpinner.jsx";
 
 function RecommendationBox({
   recommendation,
+  recommendations = [],
   recommendedProduct,
+  products = [],
   loading,
   error,
   hasCartItems,
@@ -102,6 +104,32 @@ function RecommendationBox({
       </dl>
 
       <p className="recommendation-message">{recommendation.context_message}</p>
+
+      {recommendations.length > 1 && (
+        <div className="recommendation-list" aria-label="En iyi öneriler">
+          <strong>En iyi {Math.min(recommendations.length, 5)} öneri</strong>
+          {recommendations.slice(0, 5).map((item, index) => {
+            const product = products.find(
+              (candidate) => candidate.id === item.recommended_product_id
+            );
+            return (
+              <button
+                type="button"
+                key={`${item.source_product_id}-${item.recommended_product_id}`}
+                disabled={!product}
+                onClick={() => product && onAddToCart(product)}
+              >
+                <span>{index + 1}</span>
+                <span>{item.recommended_product_emoji}</span>
+                <strong>{item.recommended_product_name}</strong>
+                <small>
+                  %{(Number(item.confidence) * 100).toFixed(0)} confidence · {Number(item.lift).toFixed(2)}× lift · skor {Number(item.score ? 0).toFixed(2)}
+                </small>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <button
         className="recommendation-button"

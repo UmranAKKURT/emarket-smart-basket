@@ -13,7 +13,7 @@ def test_tomato_has_recommendation(
 
     response = client.post(
         "/api/v1/recommendations",
-        json={"basket_product_ids": [tomato_id], "limit": 3},
+        json={"basket_product_ids": [tomato_id], "limit": 5},
     )
 
     assert response.status_code == 200
@@ -26,7 +26,11 @@ def test_tomato_has_recommendation(
     assert "confidence" in recommendation
     assert "lift" in recommendation
     assert "support" in recommendation
+    assert "score" in recommendation
     assert recommendation["context_message"]
+    assert len(data["recommendations"]) <= 5
+    scores = [item["score"] for item in data["recommendations"]]
+    assert scores == sorted(scores, reverse=True)
 
 
 def test_recommendations_reject_unknown_product(client: TestClient) -> None:

@@ -110,6 +110,8 @@ class AnalyticsSummaryResponse(BaseModel):
     unique_customers: int
     total_products: int
     total_categories: int
+    total_association_rules: int
+    active_rule_count: int
     last_order_at: str | None
     most_recommended_product: RecommendedProductSummaryResponse | None
 
@@ -122,6 +124,25 @@ class TopProductResponse(BaseModel):
     total_quantity: int
     total_revenue: float
     order_count: int
+
+
+class TopProductPairResponse(BaseModel):
+    first_product_id: int
+    first_product_name: str
+    first_product_emoji: str
+    second_product_id: int
+    second_product_name: str
+    second_product_emoji: str
+    order_count: int
+    combined_quantity: int
+    support: float
+
+
+class DashboardPeriodMetricsResponse(BaseModel):
+    last_7_day_orders: int
+    last_30_day_orders: int
+    daily_average_orders: float
+    daily_average_revenue: float
 
 
 class CategorySalesResponse(BaseModel):
@@ -151,11 +172,28 @@ class StrongRuleResponse(BaseModel):
     confidence: float
     lift: float
     context_message: str
+    created_at: str | None = None
+    updated_at: str | None = None
+    calculation_count: int = 1
+    is_active: bool = True
+
+
+class AssociationRulePageResponse(BaseModel):
+    rules: list[StrongRuleResponse]
+    total: int
+    limit: int
+    offset: int
+    search: str = ""
+    sort_by: str
+    sort_direction: str
+    status_filter: str = "all"
 
 
 class AnalyticsDashboardResponse(BaseModel):
     summary: AnalyticsSummaryResponse
+    period_metrics: DashboardPeriodMetricsResponse
     top_products: list[TopProductResponse]
+    top_product_pairs: list[TopProductPairResponse]
     category_sales: list[CategorySalesResponse]
     daily_sales: list[DailySalesResponse]
     strongest_rules: list[StrongRuleResponse]
@@ -202,7 +240,7 @@ class RecommendationRequest(BaseModel):
     )
 
     limit: int = Field(
-        default=3,
+        default=5,
         ge=MIN_RECOMMENDATION_LIMIT,
         le=MAX_RECOMMENDATION_LIMIT,
         description="Döndürülecek maksimum öneri sayısı.",
@@ -226,6 +264,7 @@ class RecommendationResponse(BaseModel):
     support: float
     confidence: float
     lift: float
+    score: float = 0.0
 
     context_message: str
 

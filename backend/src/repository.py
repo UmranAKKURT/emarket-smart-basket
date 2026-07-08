@@ -697,7 +697,10 @@ class AssociationRuleRepository(BaseRepository):
                     ar.confidence,
                     ar.lift,
                     ar.context_message,
-                    ar.created_at
+                    ar.created_at,
+                    ar.updated_at,
+                    ar.calculation_count,
+                    ar.is_active
                 FROM association_rules AS ar
                 INNER JOIN products AS p1
                     ON p1.id = ar.antecedent_product_id
@@ -730,13 +733,17 @@ class AssociationRuleRepository(BaseRepository):
                     ar.confidence,
                     ar.lift,
                     ar.context_message,
-                    ar.created_at
+                    ar.created_at,
+                    ar.updated_at,
+                    ar.calculation_count,
+                    ar.is_active
                 FROM association_rules AS ar
                 INNER JOIN products AS p1
                     ON p1.id = ar.antecedent_product_id
                 INNER JOIN products AS p2
                     ON p2.id = ar.consequent_product_id
                 WHERE ar.antecedent_product_id = ?
+                    AND ar.is_active = 1
                 ORDER BY ar.confidence DESC, ar.lift DESC;
                 """,
                 (antecedent_product_id,),
@@ -768,17 +775,22 @@ class AssociationRuleRepository(BaseRepository):
                             support,
                             confidence,
                             lift,
-                            context_message
+                            context_message,
+                            updated_at,
+                            calculation_count,
+                            is_active
                         )
                     VALUES
-                        (?, ?, ?, ?, ?, ?)
+                        (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 1, 1)
                     ON CONFLICT(antecedent_product_id, consequent_product_id)
                     DO UPDATE SET
                         support = excluded.support,
                         confidence = excluded.confidence,
                         lift = excluded.lift,
                         context_message = excluded.context_message,
-                        created_at = CURRENT_TIMESTAMP;
+                        updated_at = CURRENT_TIMESTAMP,
+                        calculation_count = COALESCE(association_rules.calculation_count, 1) + 1,
+                        is_active = 1;
                     """,
                     (
                         antecedent_product_id,
@@ -816,7 +828,10 @@ class AssociationRuleRepository(BaseRepository):
                             support,
                             confidence,
                             lift,
-                            context_message
+                            context_message,
+                            updated_at,
+                            calculation_count,
+                            is_active
                         )
                     VALUES
                         (
@@ -825,7 +840,10 @@ class AssociationRuleRepository(BaseRepository):
                             :support,
                             :confidence,
                             :lift,
-                            :context_message
+                            :context_message,
+                            CURRENT_TIMESTAMP,
+                            1,
+                            1
                         )
                     ON CONFLICT(antecedent_product_id, consequent_product_id)
                     DO UPDATE SET
@@ -833,7 +851,9 @@ class AssociationRuleRepository(BaseRepository):
                         confidence = excluded.confidence,
                         lift = excluded.lift,
                         context_message = excluded.context_message,
-                        created_at = CURRENT_TIMESTAMP;
+                        updated_at = CURRENT_TIMESTAMP,
+                        calculation_count = COALESCE(association_rules.calculation_count, 1) + 1,
+                        is_active = 1;
                     """,
                     rules,
                 )
@@ -848,19 +868,57 @@ class AssociationRuleRepository(BaseRepository):
 
     def clear_rules(self) -> None:
         """
-        Association rule tablosundaki tüm kayıtları siler.
+        Kuralları veri kaybı oluşturmadan pasif hale getirir.
 
-        Rule mining yeniden çalıştırıldığında eski kuralları temizlemek için
-        kullanılabilir.
+        Eski çağrılarla geriye uyumluluk için metot adı korunur; artık kayıt
+        silmek yerine geçmişi saklar ve aktif görünümden çıkarır.
         """
 
         with self.db_helper.get_connection() as connection:
             connection.execute(
                 """
-                DELETE FROM association_rules;
+                UPDATE association_rules
+                SET is_active = 0,
+                    updated_at = CURRENT_TIMESTAMP;
                 """
             )
             connection.commit()
+
+    def deactivate_rules_not_in(self, rules: list[dict[str, Any]]) -> None:
+        """Son hesaplamada üretilmeyen kuralları silmeden pasifleştirir."""
+
+        active_pairs = {
+            (int(rule["antecedent_product_id"]), int(rule["consequent_product_id"]))
+            for rule in rules
+        }
+
+        with self.db_helper.get_connection() as connection:
+            existing_rows = connection.execute(
+                """
+                SELECT antecedent_product_id, consequent_product_id
+                FROM association_rules;
+                """
+            ).fetchall()
+
+            stale_pairs = [
+                (row["antecedent_product_id"], row["consequent_product_id"])
+                for row in existing_rows
+                if (row["antecedent_product_id"], row["consequent_product_id"])
+                not in active_pairs
+            ]
+
+            if stale_pairs:
+                connection.executemany(
+                    """
+                    UPDATE association_rules
+                    SET is_active = 0,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE antecedent_product_id = ?
+                        AND consequent_product_id = ?;
+                    """,
+                    stale_pairs,
+                )
+                connection.commit()
 
     def count_rules(self) -> int:
         """

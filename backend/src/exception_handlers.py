@@ -182,3 +182,4 @@ def register_exception_handlers(app: FastAPI) -> None:
             500,
             "Beklenmeyen bir sunucu hatası oluştu.",
         )
+

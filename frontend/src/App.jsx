@@ -1,8 +1,9 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import BasketSidebar from "./components/BasketSidebar.jsx";
 import CatalogSection from "./components/CatalogSection.jsx";
 import Header from "./components/Header.jsx";
+import MobileCartFab from "./components/MobileCartFab.jsx";
 import OrderPanel from "./components/OrderPanel.jsx";
 import {
   DEFAULT_RECOMMENDATION_LIMIT,
@@ -29,6 +30,14 @@ function App() {
     DEFAULT_RECOMMENDATION_LIMIT
   );
   const { showToast } = useToast();
+  const basketRef = useRef(null);
+
+  const scrollToBasket = useCallback(() => {
+    basketRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
+  }, []);
 
   const handleAddToCart = useCallback((product) => {
     cartState.addToCart(product);
@@ -113,6 +122,7 @@ function App() {
           products={catalog.products}
           cartTotal={cartState.cartTotal}
           recommendation={recommendationState.recommendation}
+          recommendations={recommendationState.recommendations}
           recommendationLoading={recommendationState.loading}
           recommendationError={recommendationState.error}
           checkoutResult={checkout.checkoutResult}
@@ -125,8 +135,14 @@ function App() {
           onClearCart={handleClearCart}
           onCheckout={checkout.checkout}
           onDismissCheckout={checkout.dismissCheckoutResult}
+          panelRef={basketRef}
         />
       </main>
+
+      <MobileCartFab
+        cartItemCount={cartState.cartItemCount}
+        onClick={scrollToBasket}
+      />
 
       <OrderPanel orderHistory={orderHistory} />
     </div>
