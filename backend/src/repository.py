@@ -729,6 +729,14 @@ class AssociationRuleRepository(BaseRepository):
                     p2.price AS consequent_price,
                     p2.category AS consequent_category,
                     p2.emoji AS consequent_emoji,
+                    (
+                        SELECT COUNT(DISTINCT left_item.order_id)
+                        FROM order_items AS left_item
+                        INNER JOIN order_items AS right_item
+                            ON right_item.order_id = left_item.order_id
+                        WHERE left_item.product_id = ar.antecedent_product_id
+                            AND right_item.product_id = ar.consequent_product_id
+                    ) AS co_occurrence_count,
                     ar.support,
                     ar.confidence,
                     ar.lift,

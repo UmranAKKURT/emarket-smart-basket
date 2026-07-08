@@ -104,6 +104,11 @@ function RecommendationBox({
       </dl>
 
       <p className="recommendation-message">{recommendation.context_message}</p>
+      <p className="recommendation-message">
+        Bu öneri sepetinizdeki ürünler dikkate alınarak oluşturuldu;
+        ilgili ürünler {Number(recommendation.co_occurrence_count ?? 0)} siparişte birlikte görüldü.
+        Toplam öneri skoru: {Number(recommendation.score ?? 0).toFixed(3)}.
+      </p>
 
       {recommendations.length > 1 && (
         <div className="recommendation-list" aria-label="En iyi öneriler">
@@ -123,7 +128,7 @@ function RecommendationBox({
                 <span>{item.recommended_product_emoji}</span>
                 <strong>{item.recommended_product_name}</strong>
                 <small>
-                  %{(Number(item.confidence) * 100).toFixed(0)} confidence · {Number(item.lift).toFixed(2)}× lift · skor {Number(item.score ? 0).toFixed(2)}
+                  %{(Number(item.confidence) * 100).toFixed(0)} confidence · {Number(item.lift).toFixed(2)}× lift · skor {Number(item.score ?? 0).toFixed(2)}
                 </small>
               </button>
             );

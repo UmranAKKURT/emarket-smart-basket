@@ -56,10 +56,9 @@ class RecommendationService:
 
     @staticmethod
     def calculate_score(recommendation: Recommendation) -> float:
-        normalized_lift = min(float(recommendation.lift), 3.0) / 3.0
         score = (
             float(recommendation.confidence) * CONFIDENCE_WEIGHT
-            + normalized_lift * LIFT_WEIGHT
+            + float(recommendation.lift) * LIFT_WEIGHT
             + float(recommendation.support) * SUPPORT_WEIGHT
         )
         return round(score, 6)

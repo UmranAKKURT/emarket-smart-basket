@@ -74,6 +74,7 @@ class Recommendation:
     recommended_product_price: float
     recommended_product_category: str
     recommended_product_emoji: str
+    co_occurrence_count: int
 
     support: float
     confidence: float
@@ -331,6 +332,7 @@ class RecommendationEngine:
                 rule["consequent_category"]
             ),
             recommended_product_emoji=str(rule["consequent_emoji"]),
+            co_occurrence_count=int(rule.get("co_occurrence_count") or 0),
             support=float(rule["support"]),
             confidence=float(rule["confidence"]),
             lift=float(rule["lift"]),

@@ -24,7 +24,14 @@ REVENUE_SHARE_PRECISION = 6
 TOP_PRODUCTS_LIMIT_RANGE = (MIN_TOP_PRODUCT_LIMIT, MAX_TOP_PRODUCT_LIMIT)
 DAILY_SALES_DAY_RANGE = (MIN_ANALYTICS_DAYS, MAX_ANALYTICS_DAYS)
 STRONG_RULES_LIMIT_RANGE = (MIN_RULE_LIMIT, MAX_RULE_LIMIT)
-RULE_SORT_FIELDS = {"confidence", "lift", "support", "created_at", "updated_at"}
+RULE_SORT_FIELDS = {
+    "confidence",
+    "lift",
+    "support",
+    "created_at",
+    "updated_at",
+    "calculation_count",
+}
 RULE_STATUS_FILTERS = {"all", "active", "passive"}
 RULE_EXPORT_COLUMNS = [
     "rule_id",

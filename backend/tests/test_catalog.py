@@ -50,3 +50,21 @@ def test_product_detail_and_missing_product(client: TestClient) -> None:
     assert detail_response.status_code == 200
     assert detail_response.json() == product
     assert missing_response.status_code == 404
+
+
+
+def test_catalog_utf8_and_emoji_are_not_mojibake(client: TestClient) -> None:
+    response = client.get("/api/v1/products")
+
+    assert response.status_code == 200
+    products = response.json()
+    assert any(product["name"] == "Salkım Domates" for product in products)
+    assert any(product["category"] == "İçecek" for product in products)
+    assert any(product["emoji"] == "🍅" for product in products)
+
+    joined_text = " ".join(
+        f"{product['name']} {product['category']} {product['emoji']}"
+        for product in products
+    )
+    for broken_token in ("\u00c3", "\u00c4", "\u00c5", "\u011f\u0178", "\ufffd"):
+        assert broken_token not in joined_text

@@ -260,6 +260,7 @@ class RecommendationResponse(BaseModel):
     recommended_product_price: float
     recommended_product_category: str
     recommended_product_emoji: str
+    co_occurrence_count: int = 0
 
     support: float
     confidence: float

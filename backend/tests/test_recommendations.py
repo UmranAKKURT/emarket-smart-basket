@@ -31,6 +31,14 @@ def test_tomato_has_recommendation(
     assert len(data["recommendations"]) <= 5
     scores = [item["score"] for item in data["recommendations"]]
     assert scores == sorted(scores, reverse=True)
+    expected_score = round(
+        0.55 * recommendation["confidence"]
+        + 0.30 * recommendation["lift"]
+        + 0.15 * recommendation["support"],
+        6,
+    )
+    assert recommendation["score"] == expected_score
+    assert recommendation["co_occurrence_count"] > 0
 
 
 def test_recommendations_reject_unknown_product(client: TestClient) -> None:

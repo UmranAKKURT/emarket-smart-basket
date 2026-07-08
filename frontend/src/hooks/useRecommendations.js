@@ -30,7 +30,7 @@ export function useRecommendations(
           signal: controller.signal
         });
 
-        setRecommendations(data.recommendations ? []);
+        setRecommendations(data.recommendations ?? []);
       } catch (err) {
         if (err.name === "AbortError") {
           return;
@@ -55,7 +55,7 @@ export function useRecommendations(
 
   return {
     recommendations,
-    recommendation: recommendations[0] ? null,
+    recommendation: recommendations[0] ?? null,
     loading,
     error
   };

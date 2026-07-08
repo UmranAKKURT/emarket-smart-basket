@@ -294,6 +294,7 @@ class AnalyticsRepository:
             "support": "ar.support",
             "created_at": "ar.created_at",
             "updated_at": "ar.updated_at",
+            "calculation_count": "ar.calculation_count",
         }
         sort_column = sort_columns.get(sort_by, "ar.confidence")
         direction = "ASC" if sort_direction == "asc" else "DESC"
@@ -401,6 +402,7 @@ class AnalyticsRepository:
             "support": "ar.support",
             "created_at": "ar.created_at",
             "updated_at": "ar.updated_at",
+            "calculation_count": "ar.calculation_count",
         }
         sort_column = sort_columns.get(sort_by, "ar.confidence")
         direction = "ASC" if sort_direction == "asc" else "DESC"

@@ -133,7 +133,7 @@ describe("StrongRulesTable", () => {
     });
 
     expect(loadRulesPage).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 5, offset: 0, statusFilter: "all" }),
+      expect.objectContaining({ limit: 10, offset: 0, statusFilter: "all" }),
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
 

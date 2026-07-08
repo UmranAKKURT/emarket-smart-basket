@@ -14,13 +14,15 @@ const SORT_LABELS = {
   lift: "Lift",
   support: "Support",
   updated_at: "Son güncelleme",
-  created_at: "Oluşturma"
+  created_at: "Oluşturma",
+  calculation_count: "Hesaplanma"
 };
 
 const PAGE_SIZE_OPTIONS = [
-  { label: "5 göster", value: 5 },
+  { label: "10 göster", value: 10 },
   { label: "20 göster", value: 20 },
   { label: "50 göster", value: 50 },
+  { label: "100 göster", value: 100 },
   { label: "Tümünü göster", value: 500 }
 ];
 
@@ -96,7 +98,7 @@ function StrongRulesTable({
 }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState({ key: "confidence", direction: "desc" });
-  const [pageSize, setPageSize] = useState(5);
+  const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(0);
   const [statusFilter, setStatusFilter] = useState("all");
   const [minConfidence, setMinConfidence] = useState("");
@@ -370,7 +372,6 @@ function StrongRulesTable({
                     </button>
                   </th>
                 ))}
-                <th>Hesaplanma</th>
                 <th>Durum</th>
                 <th>Detay</th>
               </tr>
