@@ -18,7 +18,9 @@ describe("RecommendationBox", () => {
       confidence: 0.84,
       lift: 1.32,
       support: 0.18,
-      context_message: "Kahvaltı sepetlerinde birlikte tercih ediliyor."
+      context_message: "Kahvaltı sepetlerinde birlikte tercih ediliyor.",
+      co_occurrence_count: 13,
+      score: 0.876
     };
 
     act(() => {
@@ -37,6 +39,10 @@ describe("RecommendationBox", () => {
 
     expect(container.textContent)
       .toContain("Süt alan kullanıcıların %84'ü Ekmek ürününü de satın aldı.");
+    expect(container.textContent)
+      .toContain("Geçmiş sipariş analizlerine göre Süt ve Ekmek ürünleri");
+    expect(container.textContent).toContain("13 farklı siparişte birlikte");
+    expect(container.textContent).toContain("Toplam öneri skoru: 0.876");
     expect(container.textContent).toContain("Confidence%84");
     expect(container.textContent).toContain("Lift1.32×");
     expect(container.textContent).toContain("Support%18");

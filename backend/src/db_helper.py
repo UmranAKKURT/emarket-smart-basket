@@ -49,6 +49,7 @@ class EMarketDBHelper:
             self.seed_order_history(connection)
             self.migrate_order_items_unit_price(connection)
             self.migrate_association_rules_metadata(connection)
+            self.seed_demo_association_rules(connection)
             self.create_indexes(connection)
             connection.commit()
 
@@ -323,6 +324,47 @@ class EMarketDBHelper:
             ON admin_sessions(expires_at);
             """
         )
+
+    def seed_demo_association_rules(self, connection: sqlite3.Connection) -> None:
+        """Demo öneri senaryolarını association_rules tablosunda idempotent tutar."""
+
+        connection.executemany(
+            """
+            INSERT INTO association_rules
+                (
+                    antecedent_product_id,
+                    consequent_product_id,
+                    support,
+                    confidence,
+                    lift,
+                    context_message,
+                    updated_at,
+                    calculation_count,
+                    is_active
+                )
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 1, 1)
+            ON CONFLICT(antecedent_product_id, consequent_product_id)
+            DO UPDATE SET
+                support = excluded.support,
+                confidence = excluded.confidence,
+                lift = excluded.lift,
+                context_message = excluded.context_message,
+                updated_at = CURRENT_TIMESTAMP,
+                calculation_count = COALESCE(association_rules.calculation_count, 1),
+                is_active = 1;
+            """,
+            self._get_demo_association_rules(),
+        )
+
+    @staticmethod
+    def _get_demo_association_rules() -> list[tuple[int, int, float, float, float, str]]:
+        return [
+            (1, 7, 0.2083, 0.92, 3.10, "Domates alan kullanıcılar Ezine Peyniri de tercih etti."),
+            (24, 30, 0.1667, 0.90, 2.80, "Sucuk alan kullanıcılar Ekmek de satın aldı."),
+            (15, 17, 0.1667, 0.88, 2.60, "Kraker alan kullanıcılar Bisküvi de satın aldı."),
+            (16, 21, 0.1250, 0.86, 2.70, "Kuruyemiş alan kullanıcılar Soğuk Çay da tercih etti."),
+            (13, 18, 0.1667, 1.00, 6.00, "Patates Cipsi alan kullanıcılar Kola da satın aldı."),
+        ]
 
     @staticmethod
     def _decode_seed_text(value: str) -> str:

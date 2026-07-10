@@ -1,27 +1,11 @@
-import { useEffect, useRef } from "react";
-
 import { formatCurrency } from "../utils/currency.js";
 import LoadingSpinner from "./LoadingSpinner.jsx";
 
 function OrderDetail({ detail, loading, error, onBack, onClose }) {
-  const panelRef = useRef(null);
-
-  useEffect(() => {
-    if (typeof panelRef.current?.scrollIntoView !== "function") {
-      return;
-    }
-
-    panelRef.current.scrollIntoView({
-      behavior: "smooth",
-      block: "center"
-    });
-  }, []);
-
   return (
     <div className="order-panel-backdrop" role="presentation">
       <section
         className="order-panel"
-        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="order-detail-title"

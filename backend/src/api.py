@@ -122,7 +122,7 @@ class ApplicationContainer:
             product_repository=self.product_repository,
             order_repository=self.order_repository,
             rule_repository=self.rule_repository,
-            min_support=0.13,
+            min_support=0.03,
             min_confidence=0.50,
             min_lift=1.00,
         )

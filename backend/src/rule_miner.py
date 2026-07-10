@@ -47,7 +47,7 @@ class AssociationRuleMiner:
         product_repository: ProductRepository,
         order_repository: OrderRepository,
         rule_repository: AssociationRuleRepository,
-        min_support: float = 0.13,
+        min_support: float = 0.03,
         min_confidence: float = 0.50,
         min_lift: float = 1.00,
     ) -> None:
@@ -351,7 +351,7 @@ if __name__ == "__main__":
         product_repository=product_repository,
         order_repository=order_repository,
         rule_repository=rule_repository,
-        min_support=0.13,
+        min_support=0.03,
         min_confidence=0.50,
         min_lift=1.00,
     )

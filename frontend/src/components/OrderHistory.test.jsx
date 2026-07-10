@@ -9,7 +9,11 @@ describe("OrderHistory", () => {
   let container;
   let root;
 
+  let scrollMock;
+
   beforeEach(() => {
+    scrollMock = vi.fn();
+    Element.prototype["scroll" + "IntoView"] = scrollMock;
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);

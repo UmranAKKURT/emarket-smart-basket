@@ -1,29 +1,13 @@
-import { useEffect, useRef } from "react";
-
 import EmptyState from "./EmptyState.jsx";
 import LoadingSpinner from "./LoadingSpinner.jsx";
 import OrderHistoryItem from "./OrderHistoryItem.jsx";
 
 function OrderHistory({ history, loading, error, onViewDetail, onClose }) {
   const orders = history?.orders ?? [];
-  const panelRef = useRef(null);
-
-  useEffect(() => {
-    if (typeof panelRef.current?.scrollIntoView !== "function") {
-      return;
-    }
-
-    panelRef.current.scrollIntoView({
-      behavior: "smooth",
-      block: "center"
-    });
-  }, []);
-
   return (
     <div className="order-panel-backdrop" role="presentation">
       <section
         className="order-panel"
-        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="order-history-title"

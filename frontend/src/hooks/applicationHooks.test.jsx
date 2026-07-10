@@ -103,6 +103,34 @@ describe("application hooks", () => {
     expect(hook.current.loading).toBe(false);
   });
 
+  it("reloads recommendations when the cart refresh key changes", async () => {
+    const basketProductIds = [1];
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    getRecommendations.mockResolvedValue({ recommendations: [] });
+
+    function Probe({ refreshKey }) {
+      useRecommendations(basketProductIds, 5, refreshKey);
+      return null;
+    }
+
+    act(() => root.render(<Probe refreshKey="1:1" />));
+    await flushPromises();
+
+    act(() => root.render(<Probe refreshKey="1:2" />));
+    await flushPromises();
+
+    expect(getRecommendations).toHaveBeenCalledTimes(2);
+    expect(getRecommendations).toHaveBeenLastCalledWith(
+      [1],
+      5,
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
   it("creates an order and clears the cart after success", async () => {
     const clearCart = vi.fn();
     const cart = [{ id: 4, name: "Muz", price: 25, quantity: 2 }];
@@ -131,5 +159,19 @@ describe("application hooks", () => {
     await act(async () => hook.current.viewOrderDetail(7));
     expect(getOrderDetail).toHaveBeenCalledWith(7, 1);
     expect(hook.current.selectedOrder.order_id).toBe(7);
+  });
+
+  it("locks body scrolling while order history is open and restores it on close", async () => {
+    getOrderHistory.mockResolvedValue({ orders: [] });
+    document.body.style.overflow = "";
+    hook = renderHook(() => useOrderHistory(1));
+
+    await act(async () => hook.current.openHistory());
+    expect(document.body.style.overflow).toBe("hidden");
+
+    act(() => hook.current.closeHistory());
+    await flushPromises();
+
+    expect(document.body.style.overflow).toBe("");
   });
 });

@@ -5,7 +5,8 @@ import { getRecommendations } from "../services/api.js";
 
 export function useRecommendations(
   basketProductIds,
-  limit = DEFAULT_RECOMMENDATION_LIMIT
+  limit = DEFAULT_RECOMMENDATION_LIMIT,
+  refreshKey = ""
 ) {
   const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -51,7 +52,7 @@ export function useRecommendations(
     return () => {
       controller.abort();
     };
-  }, [basketProductIds, limit]);
+  }, [basketProductIds, limit, refreshKey]);
 
   return {
     recommendations,

@@ -105,9 +105,12 @@ function RecommendationBox({
 
       <p className="recommendation-message">{recommendation.context_message}</p>
       <p className="recommendation-message">
-        Bu öneri sepetinizdeki ürünler dikkate alınarak oluşturuldu;
-        ilgili ürünler {Number(recommendation.co_occurrence_count ?? 0)} siparişte birlikte görüldü.
-        Toplam öneri skoru: {Number(recommendation.score ?? 0).toFixed(3)}.
+        Geçmiş sipariş analizlerine göre {recommendation.source_product_name} ve{" "}
+        {recommendation.recommended_product_name} ürünleri{" "}
+        {Number(recommendation.co_occurrence_count ?? 0)} farklı siparişte birlikte
+        satın alınmıştır. Bu nedenle size {recommendation.recommended_product_name}{" "}
+        ürünü önerilmektedir. Toplam öneri skoru:{" "}
+        {Number(recommendation.score ?? 0).toFixed(3)}.
       </p>
 
       {recommendations.length > 1 && (

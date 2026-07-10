@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import BasketSidebar from "./components/BasketSidebar.jsx";
 import CatalogSection from "./components/CatalogSection.jsx";
@@ -25,17 +25,36 @@ function App() {
     DEMO_USER_ID
   );
   const orderHistory = useOrderHistory(DEMO_USER_ID);
+  const recommendationRefreshKey = useMemo(
+    () => cartState.cart
+      .map((item) => `${item.id}:${item.quantity}`)
+      .join("|"),
+    [cartState.cart]
+  );
   const recommendationState = useRecommendations(
     cartState.basketProductIds,
-    DEFAULT_RECOMMENDATION_LIMIT
+    DEFAULT_RECOMMENDATION_LIMIT,
+    recommendationRefreshKey
   );
   const { showToast } = useToast();
   const basketRef = useRef(null);
 
   const scrollToBasket = useCallback(() => {
-    basketRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "center"
+    const basketElement = basketRef.current;
+
+    if (!basketElement) {
+      return;
+    }
+
+    const basketTop = basketElement.getBoundingClientRect().top + window.scrollY;
+    const centeredTop = basketTop - Math.max(
+      (window.innerHeight - basketElement.offsetHeight) / 2,
+      0
+    );
+
+    window.scrollTo({
+      top: Math.max(centeredTop, 0),
+      behavior: "smooth"
     });
   }, []);
 

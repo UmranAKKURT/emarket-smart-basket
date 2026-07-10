@@ -33,6 +33,11 @@ class BasketValidationError(RecommendationEngineError):
     pass
 
 
+CONFIDENCE_WEIGHT = 0.45
+LIFT_WEIGHT = 0.35
+SUPPORT_WEIGHT = 0.20
+
+
 class ProductRepositoryProtocol(Protocol):
     """
     RecommendationEngine'in ihtiyaç duyduğu ürün repository davranışları.
@@ -56,6 +61,12 @@ class AssociationRuleRepositoryProtocol(Protocol):
     def get_rules_by_antecedent(
         self,
         antecedent_product_id: int,
+    ) -> list[dict[str, Any]]:
+        ...
+
+    def get_rules_by_antecedents(
+        self,
+        antecedent_product_ids: list[int],
     ) -> list[dict[str, Any]]:
         ...
 
@@ -142,7 +153,7 @@ class RecommendationEngine:
     def recommend(
         self,
         basket_product_ids: Sequence[int],
-        limit: int = 3,
+        limit: int | None = 3,
     ) -> list[Recommendation]:
         """
         Sepete göre en güçlü ürün önerilerini döndürür.
@@ -152,11 +163,12 @@ class RecommendationEngine:
         2. Lift
         3. Support
 
-        Aynı ürün birden fazla sepet ürünü tarafından önerilirse,
-        o ürün için yalnızca en güçlü kural korunur.
+        Her sepet ürünü için yalnızca en yüksek skorlu tek öneri korunur.
+        Aynı önerilen ürün birden fazla sepet ürünü tarafından önerilirse,
+        o öneri için de yalnızca en güçlü kural tutulur.
         """
 
-        if limit <= 0:
+        if limit is not None and limit <= 0:
             raise BasketValidationError(
                 "Öneri limiti sıfırdan büyük olmalıdır."
             )
@@ -178,6 +190,9 @@ class RecommendationEngine:
             reverse=True,
         )
 
+        if limit is None:
+            return sorted_recommendations
+
         return sorted_recommendations[:limit]
 
     def _collect_recommendations(
@@ -187,19 +202,27 @@ class RecommendationEngine:
         """
         Sepetteki tüm ürünler için kural adaylarını toplar.
 
-        Anahtar olarak önerilen ürün id değeri kullanılır.
-        Böylece aynı ürün birden fazla kez önerilmez.
+        Her sepet ürünü kendi kuralları arasından yalnızca en güçlü öneriyi
+        üretir. Anahtar olarak önerilen ürün id değeri kullanıldığı için aynı
+        ürün birden fazla kaynak üründen gelse bile kullanıcıya tek kez gösterilir.
         """
 
         basket_product_id_set = set(basket_product_ids)
         recommendations_by_product: dict[int, Recommendation] = {}
 
-        for basket_product_id in basket_product_ids:
-            rules = self.rule_repository.get_rules_by_antecedent(
-                basket_product_id
-            )
+        rules_by_source: dict[int, list[dict[str, Any]]] = {
+            product_id: [] for product_id in basket_product_ids
+        }
+        for rule in self.rule_repository.get_rules_by_antecedents(
+            basket_product_ids
+        ):
+            source_product_id = int(rule["antecedent_product_id"])
+            rules_by_source.setdefault(source_product_id, []).append(rule)
 
-            for rule in rules:
+        for basket_product_id in basket_product_ids:
+            strongest_for_source: Recommendation | None = None
+
+            for rule in rules_by_source.get(basket_product_id, []):
                 consequent_product_id = rule["consequent_product_id"]
 
                 # Önerilecek ürün zaten sepetteyse gösterilmez.
@@ -211,20 +234,32 @@ class RecommendationEngine:
 
                 recommendation = self._build_recommendation(rule)
 
-                current_recommendation = recommendations_by_product.get(
-                    consequent_product_id
-                )
-
                 if (
-                    current_recommendation is None
+                    strongest_for_source is None
                     or self._is_stronger_recommendation(
                         candidate=recommendation,
-                        current=current_recommendation,
+                        current=strongest_for_source,
                     )
                 ):
-                    recommendations_by_product[consequent_product_id] = (
-                        recommendation
-                    )
+                    strongest_for_source = recommendation
+
+            if strongest_for_source is None:
+                continue
+
+            current_recommendation = recommendations_by_product.get(
+                strongest_for_source.recommended_product_id
+            )
+
+            if (
+                current_recommendation is None
+                or self._is_stronger_recommendation(
+                    candidate=strongest_for_source,
+                    current=current_recommendation,
+                )
+            ):
+                recommendations_by_product[
+                    strongest_for_source.recommended_product_id
+                ] = strongest_for_source
 
         return recommendations_by_product
 
@@ -322,6 +357,10 @@ class RecommendationEngine:
         Repository'den gelen kural kaydını Recommendation nesnesine dönüştürür.
         """
 
+        support = float(rule["support"])
+        confidence = float(rule["confidence"])
+        lift = float(rule["lift"])
+
         return Recommendation(
             source_product_id=int(rule["antecedent_product_id"]),
             source_product_name=str(rule["antecedent_name"]),
@@ -333,11 +372,28 @@ class RecommendationEngine:
             ),
             recommended_product_emoji=str(rule["consequent_emoji"]),
             co_occurrence_count=int(rule.get("co_occurrence_count") or 0),
-            support=float(rule["support"]),
-            confidence=float(rule["confidence"]),
-            lift=float(rule["lift"]),
+            support=support,
+            confidence=confidence,
+            lift=lift,
             context_message=str(rule["context_message"]),
-            score=0.0,
+            score=RecommendationEngine._calculate_score(
+                confidence=confidence,
+                lift=lift,
+                support=support,
+            ),
+        )
+
+    @staticmethod
+    def _calculate_score(
+        confidence: float,
+        lift: float,
+        support: float,
+    ) -> float:
+        return round(
+            confidence * CONFIDENCE_WEIGHT
+            + lift * LIFT_WEIGHT
+            + support * SUPPORT_WEIGHT,
+            6,
         )
 
     @staticmethod

@@ -759,6 +759,66 @@ class AssociationRuleRepository(BaseRepository):
 
         return self._rows_to_dicts(rows)
 
+    def get_rules_by_antecedents(
+        self,
+        antecedent_product_ids: list[int],
+    ) -> list[dict[str, Any]]:
+        """Birden fazla sepet ürünü için aktif öneri kurallarını tek sorguda getirir."""
+
+        unique_product_ids = list(dict.fromkeys(
+            int(product_id) for product_id in antecedent_product_ids
+        ))
+
+        if not unique_product_ids:
+            return []
+
+        placeholders = ", ".join("?" for _ in unique_product_ids)
+
+        with self.db_helper.get_connection() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT
+                    ar.id,
+                    ar.antecedent_product_id,
+                    p1.name AS antecedent_name,
+                    ar.consequent_product_id,
+                    p2.name AS consequent_name,
+                    p2.price AS consequent_price,
+                    p2.category AS consequent_category,
+                    p2.emoji AS consequent_emoji,
+                    (
+                        SELECT COUNT(DISTINCT left_item.order_id)
+                        FROM order_items AS left_item
+                        INNER JOIN order_items AS right_item
+                            ON right_item.order_id = left_item.order_id
+                        WHERE left_item.product_id = ar.antecedent_product_id
+                            AND right_item.product_id = ar.consequent_product_id
+                    ) AS co_occurrence_count,
+                    ar.support,
+                    ar.confidence,
+                    ar.lift,
+                    ar.context_message,
+                    ar.created_at,
+                    ar.updated_at,
+                    ar.calculation_count,
+                    ar.is_active
+                FROM association_rules AS ar
+                INNER JOIN products AS p1
+                    ON p1.id = ar.antecedent_product_id
+                INNER JOIN products AS p2
+                    ON p2.id = ar.consequent_product_id
+                WHERE ar.antecedent_product_id IN ({placeholders})
+                    AND ar.is_active = 1
+                ORDER BY ar.antecedent_product_id ASC,
+                    ar.confidence DESC,
+                    ar.lift DESC,
+                    ar.support DESC;
+                """,
+                tuple(unique_product_ids),
+            ).fetchall()
+
+        return self._rows_to_dicts(rows)
+
     def insert_rule(
         self,
         antecedent_product_id: int,

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { getOrderDetail, getOrderHistory } from "../services/api.js";
 
@@ -10,6 +10,26 @@ export function useOrderHistory(userId) {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    const previousPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    document.body.style.overflow = "hidden";
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.paddingRight = previousPaddingRight;
+    };
+  }, [isOpen]);
 
   const openHistory = useCallback(async () => {
     setIsOpen(true);
@@ -66,4 +86,3 @@ export function useOrderHistory(userId) {
     returnToHistory
   };
 }
-

@@ -3,13 +3,16 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Sequence
 
-from src.engine import Recommendation, RecommendationEngine
+from src.engine import (
+    CONFIDENCE_WEIGHT,
+    LIFT_WEIGHT,
+    SUPPORT_WEIGHT,
+    Recommendation,
+    RecommendationEngine,
+)
 from src.validation import MAX_RECOMMENDATION_LIMIT, MIN_RECOMMENDATION_LIMIT
 
 
-CONFIDENCE_WEIGHT = 0.55
-LIFT_WEIGHT = 0.30
-SUPPORT_WEIGHT = 0.15
 DEFAULT_RECOMMENDATION_LIMIT = 5
 
 
@@ -32,7 +35,7 @@ class RecommendationService:
 
         recommendations = self.engine.recommend(
             basket_product_ids=basket_product_ids,
-            limit=MAX_RECOMMENDATION_LIMIT,
+            limit=None,
         )
 
         scored_recommendations = [
