@@ -41,15 +41,15 @@ describe("OrderHistory", () => {
 
   it("shows loading, empty and error states", () => {
     render({ loading: true });
-    expect(container.textContent).toContain("Siparişleriniz yükleniyor...");
+    expect(document.body.textContent).toContain("Siparişleriniz yükleniyor...");
 
     render({ history: { orders: [] } });
-    expect(container.textContent).toContain(
+    expect(document.body.textContent).toContain(
       "Henüz oluşturulmuş bir siparişiniz bulunmuyor."
     );
 
     render({ error: "Backend bağlantısı kurulamadı." });
-    expect(container.textContent).toContain(
+    expect(document.body.textContent).toContain(
       "Sipariş geçmişine şu anda ulaşılamıyor."
     );
   });
@@ -74,13 +74,13 @@ describe("OrderHistory", () => {
       onClose
     });
 
-    expect(container.textContent).toContain("Sipariş #22");
-    expect(container.textContent).toContain("209,70 TL");
+    expect(document.body.textContent).toContain("Sipariş #22");
+    expect(document.body.textContent).toContain("209,70 TL");
 
-    const detailButton = Array.from(container.querySelectorAll("button")).find(
+    const detailButton = Array.from(document.body.querySelectorAll("button")).find(
       (button) => button.textContent === "Detayları Gör"
     );
-    const closeButton = Array.from(container.querySelectorAll("button")).find(
+    const closeButton = Array.from(document.body.querySelectorAll("button")).find(
       (button) => button.textContent === "Kapat"
     );
 

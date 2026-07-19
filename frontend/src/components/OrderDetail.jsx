@@ -1,8 +1,10 @@
+import { createPortal } from "react-dom";
+
 import { formatCurrency } from "../utils/currency.js";
 import LoadingSpinner from "./LoadingSpinner.jsx";
 
 function OrderDetail({ detail, loading, error, onBack, onClose }) {
-  return (
+  return createPortal(
     <div className="order-panel-backdrop" role="presentation">
       <section
         className="order-panel"
@@ -64,7 +66,8 @@ function OrderDetail({ detail, loading, error, onBack, onClose }) {
           </>
         )}
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }
 

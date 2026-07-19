@@ -53,14 +53,14 @@ describe("OrderDetail", () => {
       );
     });
 
-    expect(container.textContent).toContain("Salkım Domates");
-    expect(container.textContent).toContain("🍅");
-    expect(container.textContent).toContain("2 adet");
-    expect(container.textContent).toContain("39,90 TL");
-    expect(container.textContent).toContain("79,80 TL");
-    expect(container.textContent).toContain("Sipariş toplamı");
+    expect(document.body.textContent).toContain("Salkım Domates");
+    expect(document.body.textContent).toContain("🍅");
+    expect(document.body.textContent).toContain("2 adet");
+    expect(document.body.textContent).toContain("39,90 TL");
+    expect(document.body.textContent).toContain("79,80 TL");
+    expect(document.body.textContent).toContain("Sipariş toplamı");
 
-    const buttons = Array.from(container.querySelectorAll("button"));
+    const buttons = Array.from(document.body.querySelectorAll("button"));
     act(() => buttons.find((button) => button.textContent.includes("Geri dön")).click());
     act(() => buttons.find((button) => button.textContent === "Kapat").click());
 

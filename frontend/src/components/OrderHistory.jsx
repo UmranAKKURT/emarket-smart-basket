@@ -1,10 +1,12 @@
+import { createPortal } from "react-dom";
+
 import EmptyState from "./EmptyState.jsx";
 import LoadingSpinner from "./LoadingSpinner.jsx";
 import OrderHistoryItem from "./OrderHistoryItem.jsx";
 
 function OrderHistory({ history, loading, error, onViewDetail, onClose }) {
   const orders = history?.orders ?? [];
-  return (
+  return createPortal(
     <div className="order-panel-backdrop" role="presentation">
       <section
         className="order-panel"
@@ -58,7 +60,8 @@ function OrderHistory({ history, loading, error, onViewDetail, onClose }) {
           </ul>
         )}
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }
 

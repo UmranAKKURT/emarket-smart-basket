@@ -125,4 +125,16 @@ describe("App checkout flow", () => {
     expect(container.textContent).toContain("Salkım Domates");
     expect(JSON.parse(localStorage.getItem(CART_STORAGE_KEY))).toEqual([product]);
   });
+
+  it("opens the order history dialog immediately while history is loading", async () => {
+    apiMocks.getOrderHistory.mockReturnValue(new Promise(() => {}));
+    await renderApp();
+
+    act(() => container.querySelector(".orders-button").click());
+
+    expect(document.body.querySelector(".order-panel-backdrop")).not.toBeNull();
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("Siparişleriniz yükleniyor...");
+    expect(document.body.style.overflow).toBe("hidden");
+  });
 });
