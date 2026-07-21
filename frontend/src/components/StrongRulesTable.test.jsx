@@ -60,9 +60,9 @@ describe("StrongRulesTable", () => {
 
     expect(container.textContent).toContain("Salkım Domates");
     expect(container.textContent).toContain("Ezine Peyniri");
-    expect(container.textContent).toContain("%75.0");
+    expect(container.textContent).toContain("%75,0");
     expect(container.textContent).toContain("1.23");
-    expect(container.textContent).toContain("%20.0");
+    expect(container.textContent).toContain("%20,0");
     expect(container.textContent).toContain("2 kez");
   });
 
@@ -70,7 +70,7 @@ describe("StrongRulesTable", () => {
     act(() => root.render(<StrongRulesTable rules={[]} />));
 
     expect(container.textContent).toContain(
-      "Henüz güçlü bir association rule bulunmuyor."
+      "Henüz güçlü bir birliktelik kuralı bulunmuyor."
     );
   });
 
@@ -143,11 +143,11 @@ describe("StrongRulesTable", () => {
         .click();
     });
     expect(loadRuleDetail).toHaveBeenCalledWith(1);
-    expect(container.textContent).toContain("Rule detayı");
+    expect(container.textContent).toContain("Kural detayı");
 
     await act(async () => {
       Array.from(container.querySelectorAll("button"))
-        .find((button) => button.textContent === "CSV Export")
+        .find((button) => button.textContent.includes("CSV Dışa Aktar"))
         .click();
     });
     expect(exportRules).toHaveBeenCalledWith(

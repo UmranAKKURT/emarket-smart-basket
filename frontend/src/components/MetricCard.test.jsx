@@ -11,12 +11,12 @@ describe("MetricCard", () => {
     const root = createRoot(container);
 
     act(() => {
-      root.render(<MetricCard title="Toplam Ciro" value="1.250,00 TL" icon="💰" />);
+      root.render(<MetricCard title="Toplam Ciro" value="1.250,00 TL" icon="banknote" />);
     });
 
     expect(container.textContent).toContain("Toplam Ciro");
     expect(container.textContent).toContain("1.250,00 TL");
-    expect(container.textContent).toContain("💰");
+    expect(container.querySelector(".admin-svg-icon")).not.toBeNull();
 
     act(() => root.unmount());
   });

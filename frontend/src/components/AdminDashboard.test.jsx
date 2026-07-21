@@ -144,7 +144,7 @@ describe("AdminDashboard", () => {
 
     expect(container.textContent).toContain("Toplam Sipariş");
     expect(container.textContent).toContain("Toplam Ciro");
-    expect(container.textContent).toContain("Toplam Association Rule");
+    expect(container.textContent).toContain("Toplam Birliktelik Kuralı");
     expect(container.textContent).toContain("Aktif Rule Sayısı");
     expect(container.textContent).toContain("Toplam Satılan Ürün");
     expect(container.textContent).toContain("Toplam Ürün");
@@ -153,17 +153,18 @@ describe("AdminDashboard", () => {
     expect(container.textContent).toContain("En Çok Önerilen Ürün");
     expect(container.textContent).toContain("Ortalama Sepet Tutarı");
     expect(container.textContent).toContain("Son Sipariş Tarihi");
-    expect(container.textContent).toContain("Yeni Analytics");
+    expect(container.textContent).toContain("Yeni Analizler");
     expect(container.textContent).toContain("Son 7 Gün Sipariş");
     expect(container.textContent).toContain("Son 30 Gün Sipariş");
     expect(container.textContent).toContain("Günlük Ortalama Sipariş");
     expect(container.textContent).toContain("Günlük Ortalama Ciro");
     expect(container.textContent).toContain("En Çok Birlikte Satılan Ürünler");
     expect(container.textContent).toContain("En Çok Satılan Ürünler");
-    expect(container.textContent).toContain("Kategori Dağılımı");
+    expect(container.textContent).toContain("Kategori Bazında Ciro Dağılımı");
+    expect(container.textContent).toContain("Yüzdeler ciro payını gösterir");
     expect(container.textContent).toContain("Günlük Sipariş Sayısı");
     expect(container.textContent).toContain(
-      "En Güçlü Association Rule Sonuçları"
+      "En Güçlü Birliktelik Kuralları"
     );
 
     act(() => {

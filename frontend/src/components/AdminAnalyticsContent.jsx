@@ -13,15 +13,34 @@ import StrongRulesTable from "./StrongRulesTable.jsx";
 import TopProductsChart from "./TopProductsChart.jsx";
 
 function AdminAnalyticsContent({ dashboard, days, onDaysChange }) {
+  const dataRefreshLabel = dashboard.summary.last_order_at
+    ? `Son sipariş: ${new Date(dashboard.summary.last_order_at).toLocaleString("tr-TR")}`
+    : "Henüz sipariş verisi yok";
+
   return (
     <div className="admin-dashboard-content">
+      <section className="admin-context-strip" aria-label="Panel veri kapsamı">
+        <div>
+          <strong>Veri kaynağı</strong>
+          <span>SQLite üretim verileri</span>
+        </div>
+        <div>
+          <strong>Dönem kapsamı</strong>
+          <span>Üst özetler tüm zamanları, günlük grafik ve dönem ortalamaları son {days} günü gösterir.</span>
+        </div>
+        <div>
+          <strong>Güncellik</strong>
+          <span>{dataRefreshLabel}</span>
+        </div>
+      </section>
+
       <section className="dashboard-overview" aria-labelledby="overview-title">
         <div className="dashboard-section-heading">
           <div>
             <p className="panel-kicker">Canlı mağaza özeti</p>
             <h3 id="overview-title">Genel Bakış</h3>
           </div>
-          <span>SQLite verileriyle güncellendi</span>
+          <span>Tüm zamanlar · {dataRefreshLabel}</span>
         </div>
 
         <DashboardOverviewCards
@@ -30,7 +49,7 @@ function AdminAnalyticsContent({ dashboard, days, onDaysChange }) {
         />
       </section>
 
-      <DashboardPeriodMetrics metrics={dashboard.period_metrics} />
+      <DashboardPeriodMetrics metrics={dashboard.period_metrics} days={days} />
 
       <section className="analytics-section analytics-section-wide">
         <div className="analytics-section-heading">
@@ -80,20 +99,37 @@ function AdminAnalyticsContent({ dashboard, days, onDaysChange }) {
         <div className="dashboard-section-heading compact">
           <div>
             <p className="panel-kicker">Satış payı</p>
-            <h3>Kategori Dağılımı</h3>
+            <h3>Kategori Bazında Ciro Dağılımı</h3>
           </div>
+          <span>Yüzdeler ciro payını gösterir</span>
         </div>
         <CategorySalesChart categories={dashboard.category_sales} />
       </section>
 
       <section className="analytics-section">
-        <h3>En Güçlü Association Rule Sonuçları</h3>
+        <h3>En Güçlü Birliktelik Kuralları</h3>
+        <p className="analytics-section-note">
+          Kurallar tüm geçmiş hesaplamalardan gelir; düşük örneklemli kayıtlar ayrıca işaretlenir.
+        </p>
         <StrongRulesTable
           rules={dashboard.strongest_rules}
           loadRulesPage={getAssociationRulesPage}
           loadRuleDetail={getAssociationRuleDetail}
           exportRules={exportAssociationRules}
         />
+      </section>
+
+      <section className="analytics-section admin-recommendation-impact">
+        <div className="dashboard-section-heading compact">
+          <div>
+            <p className="panel-kicker">Öneri etkisi</p>
+            <h3>Performans Takibi</h3>
+          </div>
+        </div>
+        <p className="analytics-empty">
+          Öneri gösterimi, tıklama ve öneriden sepete ekleme metrikleri mevcut veri modelinde henüz izlenmiyor.
+          Bu yüzden panel sahte performans verisi üretmez; mevcut özetlerde yalnızca kural sayısı ve en çok önerilen ürün gösterilir.
+        </p>
       </section>
     </div>
   );

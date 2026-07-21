@@ -1,4 +1,5 @@
 import { formatCurrency } from "../utils/currency.js";
+import { formatPercentRatio } from "../utils/numberFormat.js";
 
 function TopProductsChart({ products }) {
   if (products.length === 0) {
@@ -15,7 +16,7 @@ function TopProductsChart({ products }) {
     <div className="top-products-chart">
       {products.map((product, index) => {
         const quantityShare = totalQuantity
-          ? (Number(product.total_quantity) / totalQuantity) * 100
+          ? Number(product.total_quantity) / totalQuantity
           : 0;
 
         return (
@@ -26,13 +27,19 @@ function TopProductsChart({ products }) {
             </span>
             <div className="top-product-content">
               <div className="analytics-row-heading">
-                <div>
+                <div className="analytics-row-main">
                   <strong>{product.product_name}</strong>
-                  <span>{product.category} · {product.order_count} sipariş</span>
+                  <span className="analytics-row-meta">
+                    <span>{product.category}</span>
+                    <span>{product.order_count} sipariş</span>
+                  </span>
                 </div>
-                <div>
+                <div className="analytics-row-values">
                   <strong>{product.total_quantity} adet</strong>
-                  <span>{formatCurrency(product.total_revenue)} · %{quantityShare.toFixed(1)}</span>
+                  <span>
+                    <span>{formatCurrency(product.total_revenue)}</span>
+                    <span>{formatPercentRatio(quantityShare, 1)}</span>
+                  </span>
                 </div>
               </div>
               <div className="analytics-bar-track" aria-hidden="true">

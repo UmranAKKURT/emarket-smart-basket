@@ -4,9 +4,11 @@ import { normalizeSearchText } from "../utils/text.js";
 import {
   buildRuleExplanation,
   compareRuleStrength,
-  formatRulePercent
+  formatRulePercent,
+  getRuleReliability
 } from "../utils/ruleMetrics.js";
 import { formatDateTime } from "../utils/date.js";
+import AdminIcon from "./AdminIcon.jsx";
 import EmptyState from "./EmptyState.jsx";
 
 const SORT_LABELS = {
@@ -44,10 +46,30 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
+function RuleProducts({ rule, strongest }) {
+  const reliability = getRuleReliability(rule);
+
+  return (
+    <div className="rule-products">
+      <span className="analytics-product-emoji" aria-hidden="true">{rule.antecedent_emoji}</span>
+      <strong>{rule.antecedent_name}</strong>
+      <span className="rule-arrow">→</span>
+      <span className="analytics-product-emoji" aria-hidden="true">{rule.consequent_emoji}</span>
+      <strong>{rule.consequent_name}</strong>
+      {strongest && <em>En güçlü kural</em>}
+      <em className={`rule-reliability rule-reliability-${reliability.tone}`}>
+        {reliability.label}
+      </em>
+    </div>
+  );
+}
+
 function RuleDetailModal({ rule, onClose }) {
   if (!rule) {
     return null;
   }
+
+  const reliability = getRuleReliability(rule);
 
   return (
     <div className="rule-modal-backdrop" role="presentation" onClick={onClose}>
@@ -60,7 +82,7 @@ function RuleDetailModal({ rule, onClose }) {
       >
         <div className="rule-modal-header">
           <div>
-            <p className="panel-kicker">Rule detayı</p>
+            <p className="panel-kicker">Kural detayı</p>
             <h3 id="rule-detail-title">
               {rule.antecedent_name} → {rule.consequent_name}
             </h3>
@@ -85,8 +107,22 @@ function RuleDetailModal({ rule, onClose }) {
         </dl>
 
         <small>{rule.context_message}</small>
+        <p className={`rule-reliability-note rule-reliability-${reliability.tone}`}>
+          {reliability.description}
+        </p>
       </article>
     </div>
+  );
+}
+
+function RuleMetricList({ rule }) {
+  return (
+    <dl className="rule-card-metrics">
+      <div><dt>Confidence</dt><dd>{formatRulePercent(rule.confidence, 1)}</dd></div>
+      <div><dt>Lift</dt><dd>{Number(rule.lift).toFixed(2)}×</dd></div>
+      <div><dt>Support</dt><dd>{formatRulePercent(rule.support, 1)}</dd></div>
+      <div><dt>Durum</dt><dd>{rule.is_active ? "Aktif" : "Pasif"}</dd></div>
+    </dl>
   );
 }
 
@@ -162,7 +198,7 @@ function StrongRulesTable({
       })
       .catch((error) => {
         if (error.name !== "AbortError") {
-          setPageError(error.message || "Association rule listesi yüklenemedi.");
+          setPageError(error.message || "Birliktelik kuralı listesi yüklenemedi.");
           setRemoteRules([]);
           setRemoteTotal(0);
         }
@@ -260,7 +296,7 @@ function StrongRulesTable({
   if (!isRemote && rules.length === 0) {
     return (
       <p className="analytics-empty">
-        Henüz güçlü bir association rule bulunmuyor.
+        Henüz güçlü bir birliktelik kuralı bulunmuyor.
       </p>
     );
   }
@@ -269,18 +305,23 @@ function StrongRulesTable({
     <div className="strong-rules-panel">
       <div className="rule-toolbar">
         <div>
-          <p className="panel-kicker">Server-side pagination</p>
-          <h3>Rule History</h3>
+          <p className="panel-kicker">Sunucu taraflı sayfalama</p>
+          <h3>Kural Geçmişi</h3>
         </div>
         <div className="rule-export-actions">
           <button type="button" onClick={() => handleExport("csv")} disabled={!exportRules || isExporting}>
-            CSV Export
+            <AdminIcon name="download" />
+            <span>CSV Dışa Aktar</span>
           </button>
           <button type="button" onClick={() => handleExport("xlsx")} disabled={!exportRules || isExporting}>
-            Excel Export
+            <AdminIcon name="download" />
+            <span>Excel Dışa Aktar</span>
           </button>
         </div>
       </div>
+      <p className="rule-export-note">
+        Dışa aktarma işlemi aktif arama, durum, tarih ve metrik filtrelerine uyan tüm sonuçları kapsar; yalnızca ekranda görünen sayfayla sınırlı değildir.
+      </p>
 
       <div className="rule-filters rule-filters-advanced">
         <label>
@@ -309,31 +350,31 @@ function StrongRulesTable({
           </select>
         </label>
         <label>
-          <span>Min confidence</span>
+          <span>Minimum güven</span>
           <input type="number" min="0" max="1" step="0.01" value={minConfidence} onChange={(event) => setMinConfidence(event.target.value)} />
         </label>
         <label>
-          <span>Min lift</span>
+          <span>Minimum lift</span>
           <input type="number" min="0" step="0.01" value={minLift} onChange={(event) => setMinLift(event.target.value)} />
         </label>
         <label>
-          <span>Min support</span>
+          <span>Minimum support</span>
           <input type="number" min="0" max="1" step="0.01" value={minSupport} onChange={(event) => setMinSupport(event.target.value)} />
         </label>
         <label>
-          <span>Created from</span>
+          <span>Oluşturma başlangıcı</span>
           <input type="date" value={createdFrom} onChange={(event) => setCreatedFrom(event.target.value)} />
         </label>
         <label>
-          <span>Created to</span>
+          <span>Oluşturma bitişi</span>
           <input type="date" value={createdTo} onChange={(event) => setCreatedTo(event.target.value)} />
         </label>
         <label>
-          <span>Updated from</span>
+          <span>Güncelleme başlangıcı</span>
           <input type="date" value={updatedFrom} onChange={(event) => setUpdatedFrom(event.target.value)} />
         </label>
         <label>
-          <span>Updated to</span>
+          <span>Güncelleme bitişi</span>
           <input type="date" value={updatedTo} onChange={(event) => setUpdatedTo(event.target.value)} />
         </label>
         <span className="rule-result-count">
@@ -344,7 +385,7 @@ function StrongRulesTable({
       {pageError && <p className="analytics-error">{pageError}</p>}
 
       {isLoadingPage ? (
-        <div className="rule-loading" role="status">Association rule kayıtları yükleniyor...</div>
+        <div className="rule-loading" role="status">Birliktelik kuralları yükleniyor...</div>
       ) : visibleRules.length === 0 ? (
         <EmptyState
           icon="🔍"
@@ -352,85 +393,98 @@ function StrongRulesTable({
           description="Arama metnini, sıralamayı veya filtreleri değiştirin."
         />
       ) : (
-        <div className="strong-rules-wrapper">
-          <table className="strong-rules-table">
-            <thead>
-              <tr>
-                <th>Kural ve açıklama</th>
-                {Object.entries(SORT_LABELS).map(([key, label]) => (
-                  <th
-                    key={key}
-                    aria-sort={sort.key === key
-                      ? (sort.direction === "desc" ? "descending" : "ascending")
-                      : "none"}
-                  >
-                    <button type="button" onClick={() => changeSort(key)}>
-                      {label}
-                      <span aria-hidden="true">
-                        {sort.key === key ? (sort.direction === "desc" ? "↓" : "↑") : "↕"}
-                      </span>
-                    </button>
-                  </th>
-                ))}
-                <th>Durum</th>
-                <th>Detay</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleRules.map((rule) => {
-                const isStrongest = rule.rule_id === strongestRuleId;
-                return (
-                  <tr
-                    className={isStrongest ? "rule-row-strongest" : undefined}
-                    key={rule.rule_id}
-                  >
-                    <td>
-                      <div className="rule-products">
-                        <span>{rule.antecedent_emoji}</span>
-                        <strong>{rule.antecedent_name}</strong>
-                        <span className="rule-arrow">→</span>
-                        <span>{rule.consequent_emoji}</span>
-                        <strong>{rule.consequent_name}</strong>
-                        {isStrongest && <em>En güçlü kural</em>}
-                      </div>
-                      <p>{buildRuleExplanation({
-                        antecedentName: rule.antecedent_name,
-                        consequentName: rule.consequent_name,
-                        confidence: rule.confidence
-                      })}</p>
-                      <small>{rule.context_message}</small>
-                      {rule.updated_at && (
-                        <small className="rule-history">
-                          Son güncelleme {formatDateTime(rule.updated_at)}
-                        </small>
-                      )}
-                    </td>
-                    <td><strong>{formatRulePercent(rule.confidence, 1)}</strong></td>
-                    <td><strong>{Number(rule.lift).toFixed(2)}×</strong></td>
-                    <td><strong>{formatRulePercent(rule.support, 1)}</strong></td>
-                    <td>{formatDateTime(rule.updated_at)}</td>
-                    <td>{formatDateTime(rule.created_at)}</td>
-                    <td><strong>{Number(rule.calculation_count ?? 1)} kez</strong></td>
-                    <td>
-                      <span className={rule.is_active ? "rule-status active" : "rule-status passive"}>
-                        {rule.is_active ? "Aktif" : "Pasif"}
-                      </span>
-                    </td>
-                    <td>
-                      <button className="rule-detail-button" type="button" onClick={() => openRuleDetail(rule)}>
-                        Detay
+        <>
+          <div className="strong-rules-wrapper">
+            <table className="strong-rules-table">
+              <thead>
+                <tr>
+                  <th>Kural ve açıklama</th>
+                  {Object.entries(SORT_LABELS).map(([key, label]) => (
+                    <th
+                      key={key}
+                      aria-sort={sort.key === key
+                        ? (sort.direction === "desc" ? "descending" : "ascending")
+                        : "none"}
+                    >
+                      <button type="button" onClick={() => changeSort(key)}>
+                        {label}
+                        <span aria-hidden="true">
+                          {sort.key === key ? (sort.direction === "desc" ? "↓" : "↑") : "↕"}
+                        </span>
                       </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                    </th>
+                  ))}
+                  <th>Durum</th>
+                  <th>Detay</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRules.map((rule) => {
+                  const isStrongest = rule.rule_id === strongestRuleId;
+                  return (
+                    <tr
+                      className={isStrongest ? "rule-row-strongest" : undefined}
+                      key={rule.rule_id}
+                    >
+                      <td>
+                        <RuleProducts rule={rule} strongest={isStrongest} />
+                        <p className="rule-summary">{buildRuleExplanation({
+                          antecedentName: rule.antecedent_name,
+                          consequentName: rule.consequent_name,
+                          confidence: rule.confidence
+                        })}</p>
+                        <small>{rule.context_message}</small>
+                      </td>
+                      <td className="rule-number"><strong>{formatRulePercent(rule.confidence, 1)}</strong></td>
+                      <td className="rule-number"><strong>{Number(rule.lift).toFixed(2)}×</strong></td>
+                      <td className="rule-number"><strong>{formatRulePercent(rule.support, 1)}</strong></td>
+                      <td className="rule-date">{formatDateTime(rule.updated_at)}</td>
+                      <td className="rule-date">{formatDateTime(rule.created_at)}</td>
+                      <td className="rule-number"><strong>{Number(rule.calculation_count ?? 1)} kez</strong></td>
+                      <td>
+                        <span className={rule.is_active ? "rule-status active" : "rule-status passive"}>
+                          {rule.is_active ? "Aktif" : "Pasif"}
+                        </span>
+                      </td>
+                      <td>
+                        <button className="rule-detail-button" type="button" onClick={() => openRuleDetail(rule)}>
+                          Detay
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="rule-card-list">
+            {visibleRules.map((rule) => {
+              const isStrongest = rule.rule_id === strongestRuleId;
+              return (
+                <article className="rule-card" key={rule.rule_id}>
+                  <RuleProducts rule={rule} strongest={isStrongest} />
+                  <RuleMetricList rule={rule} />
+                  <p className="rule-summary">{buildRuleExplanation({
+                    antecedentName: rule.antecedent_name,
+                    consequentName: rule.consequent_name,
+                    confidence: rule.confidence
+                  })}</p>
+                  <div className="rule-card-footer">
+                    <span>Son güncelleme: {formatDateTime(rule.updated_at)}</span>
+                    <button className="rule-detail-button" type="button" onClick={() => openRuleDetail(rule)}>
+                      Detay
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {isRemote && totalPages > 1 && (
-        <div className="rule-pagination" aria-label="Association rule sayfalama">
+        <div className="rule-pagination" aria-label="Birliktelik kuralı sayfalama">
           <button
             type="button"
             onClick={() => setPage((current) => Math.max(0, current - 1))}

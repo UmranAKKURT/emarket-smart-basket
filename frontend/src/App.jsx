@@ -46,6 +46,24 @@ function App() {
       return;
     }
 
+    const isCompactLayout = window.matchMedia?.("(max-width: 980px)").matches ??
+      window.innerWidth <= 980;
+
+    if (isCompactLayout) {
+      const scrollMarginTop = Number.parseFloat(
+        window.getComputedStyle(basketElement).scrollMarginTop
+      ) || 0;
+      const targetTop = basketElement.getBoundingClientRect().top +
+        window.scrollY -
+        scrollMarginTop;
+
+      window.scrollTo({
+        top: Math.max(targetTop, 0),
+        behavior: "smooth"
+      });
+      return;
+    }
+
     const basketTop = basketElement.getBoundingClientRect().top + window.scrollY;
     const centeredTop = basketTop - Math.max(
       (window.innerHeight - basketElement.offsetHeight) / 2,
@@ -114,7 +132,9 @@ function App() {
   ]);
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${
+      cartState.cartItemCount > 0 ? "has-mobile-cart-bar" : ""
+    }`}>
       <Header
         searchTerm={catalog.searchTerm}
         onSearchChange={catalog.setSearchTerm}
@@ -160,6 +180,7 @@ function App() {
 
       <MobileCartFab
         cartItemCount={cartState.cartItemCount}
+        cartTotal={cartState.cartTotal}
         onClick={scrollToBasket}
       />
 
