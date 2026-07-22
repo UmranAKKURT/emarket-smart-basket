@@ -242,6 +242,27 @@ class EMarketDBHelper:
             """
         )
 
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS recommendation_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_key TEXT NOT NULL UNIQUE,
+                session_id TEXT NOT NULL,
+                user_id INTEGER NULL,
+                rule_id INTEGER NOT NULL,
+                source_product_id INTEGER NOT NULL,
+                recommended_product_id INTEGER NOT NULL,
+                event_type TEXT NOT NULL CHECK(event_type IN ('impression', 'add_to_cart', 'purchase')),
+                order_id INTEGER NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (rule_id) REFERENCES association_rules(id) ON DELETE CASCADE,
+                FOREIGN KEY (source_product_id) REFERENCES products(id) ON DELETE CASCADE,
+                FOREIGN KEY (recommended_product_id) REFERENCES products(id) ON DELETE CASCADE,
+                FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL
+            );
+            """
+        )
+
     def create_indexes(self, connection: sqlite3.Connection) -> None:
         """
         Sorguların daha hızlı çalışması için temel indexleri oluşturur.
@@ -300,6 +321,20 @@ class EMarketDBHelper:
             """
             CREATE INDEX IF NOT EXISTS idx_rules_updated_at
             ON association_rules(updated_at);
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_recommendation_events_type_created
+            ON recommendation_events(event_type, created_at);
+            """
+        )
+
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_recommendation_events_order
+            ON recommendation_events(order_id);
             """
         )
 
@@ -699,6 +734,5 @@ class EMarketDBHelper:
 if __name__ == "__main__":
     db_helper = EMarketDBHelper()
     print(f"Veritabanı başarıyla hazırlandı: {db_helper.db_path}")
-
 
 

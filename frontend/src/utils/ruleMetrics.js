@@ -1,5 +1,10 @@
 import { formatPercentRatio } from "./numberFormat.js";
 
+export const RULE_RELIABILITY_LIMITS = {
+  minSupport: 0.05,
+  minCalculationCount: 3
+};
+
 export function formatRulePercent(value, fractionDigits = 0) {
   return formatPercentRatio(value, fractionDigits);
 }
@@ -16,19 +21,24 @@ export function compareRuleStrength(left, right) {
   return (
     Number(left.confidence) - Number(right.confidence) ||
     Number(left.lift) - Number(right.lift) ||
-    Number(left.support) - Number(right.support)
+    Number(left.support) - Number(right.support) ||
+    Number(left.calculation_count ?? 1) - Number(right.calculation_count ?? 1)
+  );
+}
+
+export function isRuleReliable(rule) {
+  return (
+    Number(rule.support) >= RULE_RELIABILITY_LIMITS.minSupport &&
+    Number(rule.calculation_count ?? 1) >= RULE_RELIABILITY_LIMITS.minCalculationCount
   );
 }
 
 export function getRuleReliability(rule) {
-  const support = Number(rule.support) || 0;
-  const calculationCount = Number(rule.calculation_count ?? 1);
-
-  if (support < 0.05 || calculationCount < 3) {
+  if (!isRuleReliable(rule)) {
     return {
       tone: "warning",
       label: "Sınırlı veri",
-      description: "Confidence yüksek olsa bile örneklem küçük olduğu için dikkatli yorumlanmalı."
+      description: `Support en az ${formatRulePercent(RULE_RELIABILITY_LIMITS.minSupport, 0)} ve hesaplanma sayısı en az ${RULE_RELIABILITY_LIMITS.minCalculationCount} olmadığında confidence dikkatli yorumlanmalı.`
     };
   }
 

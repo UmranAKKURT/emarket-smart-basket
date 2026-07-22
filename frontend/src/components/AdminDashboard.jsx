@@ -7,7 +7,9 @@ function AdminDashboard({
   loading,
   error,
   days,
-  onDaysChange,
+  periodFilter,
+  periodValidationMessage,
+  onPeriodFilterChange,
   onRetry,
   onClose,
   adminEmail,
@@ -55,7 +57,9 @@ function AdminDashboard({
           <AdminAnalyticsContent
             dashboard={dashboard}
             days={days}
-            onDaysChange={onDaysChange}
+            periodFilter={periodFilter}
+            periodValidationMessage={periodValidationMessage}
+            onPeriodFilterChange={onPeriodFilterChange}
           />
         )}
       </section>

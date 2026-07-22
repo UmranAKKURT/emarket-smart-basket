@@ -32,6 +32,7 @@ const rules = [
     support: 0.12,
     calculation_count: 4,
     is_active: false,
+    is_strongest: true,
     created_at: "2026-07-02T10:00:00+00:00",
     updated_at: "2026-07-06T10:00:00+00:00",
     context_message: "Kahvaltı sepetlerinde birlikte görülüyor."

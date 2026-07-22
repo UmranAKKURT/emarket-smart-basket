@@ -35,6 +35,7 @@ from src.repository import (
     AssociationRuleRepository,
     OrderRepository,
     ProductRepository,
+    RecommendationEventRepository,
 )
 from src.request_logging import register_request_logging
 from src.rule_miner import AssociationRuleMiner
@@ -73,6 +74,8 @@ from src.schemas import (
     OrderHistoryResponse,
     ProductResponse,
     RecommendationListResponse,
+    RecommendationEventRequest,
+    RecommendationEventResponse,
     RecommendationRequest,
     RecommendationResponse,
     RuleRebuildResponse,
@@ -111,6 +114,9 @@ class ApplicationContainer:
         self.product_repository = ProductRepository(self.db_helper)
         self.order_repository = OrderRepository(self.db_helper)
         self.rule_repository = AssociationRuleRepository(self.db_helper)
+        self.recommendation_event_repository = RecommendationEventRepository(
+            self.db_helper
+        )
         self.analytics_repository = AnalyticsRepository(self.db_helper)
         self.analytics_service = AnalyticsService(self.analytics_repository)
         self.order_service = OrderService(
@@ -425,6 +431,11 @@ def create_order(
         container.rule_miner.mine_and_save_rules,
         clear_existing=True,
     )
+    if request_body.recommendation_event_keys:
+        container.recommendation_event_repository.mark_purchases_for_order(
+            summary["order_id"],
+            request_body.recommendation_event_keys,
+        )
 
     return CreateOrderResponse(
         **summary,
@@ -463,6 +474,21 @@ def get_recommendations(
     )
 
 
+@router.post(
+    "/recommendation-events",
+    response_model=RecommendationEventResponse,
+    tags=["Recommendations"],
+)
+def record_recommendation_event(
+    request_body: RecommendationEventRequest,
+    container: ContainerDependency,
+) -> RecommendationEventResponse:
+    recorded = container.recommendation_event_repository.record_event(
+        request_body.model_dump()
+    )
+    return RecommendationEventResponse(recorded=recorded)
+
+
 # Demo yönetim endpointleri production ortamında kimlik doğrulamayla korunmalıdır.
 @router.get(
     "/admin/analytics/dashboard",
@@ -482,26 +508,59 @@ def get_analytics_dashboard(
     ] = 10,
     days: Annotated[
         int,
-        Query(ge=MIN_ANALYTICS_DAYS, le=MAX_ANALYTICS_DAYS),
+        Query(ge=1, le=MAX_ANALYTICS_DAYS),
     ] = 30,
     pair_limit: Annotated[
         int,
         Query(ge=MIN_TOP_PRODUCT_LIMIT, le=MAX_TOP_PRODUCT_LIMIT),
     ] = 10,
+    period: Literal["today", "last_7_days", "last_30_days", "all_time", "custom"] = "last_30_days",
+    start_date: Annotated[str | None, Query(max_length=10)] = None,
+    end_date: Annotated[str | None, Query(max_length=10)] = None,
 ) -> AnalyticsDashboardResponse:
+    resolved_period = container.analytics_service.resolve_period(
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+        days=days,
+    )
     return AnalyticsDashboardResponse(
-        summary=container.analytics_service.get_dashboard_summary(),
+        summary=container.analytics_service.get_dashboard_summary(
+            start_date=resolved_period["start_date"],
+            end_date=resolved_period["end_date"],
+            previous_start_date=resolved_period["previous_start_date"],
+            previous_end_date=resolved_period["previous_end_date"],
+        ),
         period_metrics=container.analytics_service.get_dashboard_period_metrics(
-            days
+            resolved_period["days"],
+            start_date=resolved_period["start_date"],
+            end_date=resolved_period["end_date"],
+            previous_start_date=resolved_period["previous_start_date"],
+            previous_end_date=resolved_period["previous_end_date"],
+        ),
+        recommendation_impact=container.recommendation_event_repository.get_impact_summary(
+            resolved_period["start_date"],
+            resolved_period["end_date"],
         ),
         top_products=container.analytics_service.get_top_products(
-            top_product_limit
+            top_product_limit,
+            resolved_period["start_date"],
+            resolved_period["end_date"],
         ),
         top_product_pairs=container.analytics_service.get_top_product_pairs(
-            pair_limit
+            pair_limit,
+            resolved_period["start_date"],
+            resolved_period["end_date"],
         ),
-        category_sales=container.analytics_service.get_category_sales(),
-        daily_sales=container.analytics_service.get_daily_sales(days),
+        category_sales=container.analytics_service.get_category_sales(
+            resolved_period["start_date"],
+            resolved_period["end_date"],
+        ),
+        daily_sales=container.analytics_service.get_daily_sales(
+            resolved_period["days"],
+            resolved_period["start_date"],
+            resolved_period["end_date"],
+        ),
         strongest_rules=container.analytics_service.get_strongest_rules(
             rule_limit
         ),
@@ -517,20 +576,57 @@ async def stream_analytics_dashboard(
     container: ContainerDependency,
     days: Annotated[
         int,
-        Query(ge=MIN_ANALYTICS_DAYS, le=MAX_ANALYTICS_DAYS),
+        Query(ge=1, le=MAX_ANALYTICS_DAYS),
     ] = 30,
+    period: Literal["today", "last_7_days", "last_30_days", "all_time", "custom"] = "last_30_days",
+    start_date: Annotated[str | None, Query(max_length=10)] = None,
+    end_date: Annotated[str | None, Query(max_length=10)] = None,
 ) -> StreamingResponse:
     async def event_stream():
         while True:
+            resolved_period = container.analytics_service.resolve_period(
+                period=period,
+                start_date=start_date,
+                end_date=end_date,
+                days=days,
+            )
             dashboard = AnalyticsDashboardResponse(
-                summary=container.analytics_service.get_dashboard_summary(),
-                period_metrics=container.analytics_service.get_dashboard_period_metrics(
-                    days
+                summary=container.analytics_service.get_dashboard_summary(
+                    resolved_period["start_date"],
+                    resolved_period["end_date"],
+                    resolved_period["previous_start_date"],
+                    resolved_period["previous_end_date"],
                 ),
-                top_products=container.analytics_service.get_top_products(10),
-                top_product_pairs=container.analytics_service.get_top_product_pairs(10),
-                category_sales=container.analytics_service.get_category_sales(),
-                daily_sales=container.analytics_service.get_daily_sales(days),
+                period_metrics=container.analytics_service.get_dashboard_period_metrics(
+                    resolved_period["days"],
+                    resolved_period["start_date"],
+                    resolved_period["end_date"],
+                    resolved_period["previous_start_date"],
+                    resolved_period["previous_end_date"],
+                ),
+                recommendation_impact=container.recommendation_event_repository.get_impact_summary(
+                    resolved_period["start_date"],
+                    resolved_period["end_date"],
+                ),
+                top_products=container.analytics_service.get_top_products(
+                    10,
+                    resolved_period["start_date"],
+                    resolved_period["end_date"],
+                ),
+                top_product_pairs=container.analytics_service.get_top_product_pairs(
+                    10,
+                    resolved_period["start_date"],
+                    resolved_period["end_date"],
+                ),
+                category_sales=container.analytics_service.get_category_sales(
+                    resolved_period["start_date"],
+                    resolved_period["end_date"],
+                ),
+                daily_sales=container.analytics_service.get_daily_sales(
+                    resolved_period["days"],
+                    resolved_period["start_date"],
+                    resolved_period["end_date"],
+                ),
                 strongest_rules=container.analytics_service.get_strongest_rules(10),
             )
             yield (

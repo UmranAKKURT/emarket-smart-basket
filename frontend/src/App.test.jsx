@@ -9,7 +9,8 @@ const apiMocks = vi.hoisted(() => ({
   getOrderDetail: vi.fn(),
   getOrderHistory: vi.fn(),
   getProducts: vi.fn(),
-  getRecommendations: vi.fn()
+  getRecommendations: vi.fn(),
+  recordRecommendationEvent: vi.fn()
 }));
 
 vi.mock("./services/api.js", () => apiMocks);
@@ -24,6 +25,29 @@ const product = {
   category: "Sebze",
   emoji: "🍅",
   quantity: 2
+};
+const recommendedProduct = {
+  id: 2,
+  name: "Ezine Peyniri",
+  price: 89.5,
+  category: "Kahvaltılık",
+  emoji: "🧀"
+};
+const recommendation = {
+  source_product_id: 1,
+  source_product_name: "Salkım Domates",
+  rule_id: 12,
+  recommended_product_id: 2,
+  recommended_product_name: "Ezine Peyniri",
+  recommended_product_price: 89.5,
+  recommended_product_category: "Kahvaltılık",
+  recommended_product_emoji: "🧀",
+  co_occurrence_count: 6,
+  support: 0.12,
+  confidence: 0.84,
+  lift: 2.1,
+  score: 1.14,
+  context_message: "Domates ve peynir birlikte satın alınır."
 };
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -41,8 +65,9 @@ describe("App checkout flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    sessionStorage.clear();
     apiMocks.checkHealth.mockResolvedValue({ status: "healthy" });
-    apiMocks.getProducts.mockResolvedValue([product]);
+    apiMocks.getProducts.mockResolvedValue([product, recommendedProduct]);
     apiMocks.getCategories.mockResolvedValue({ categories: ["Sebze"] });
     apiMocks.getAnalyticsDashboard.mockResolvedValue(null);
     apiMocks.getOrderHistory.mockResolvedValue({
@@ -53,6 +78,7 @@ describe("App checkout flow", () => {
       orders: []
     });
     apiMocks.getRecommendations.mockResolvedValue({ recommendations: [] });
+    apiMocks.recordRecommendationEvent.mockResolvedValue({ recorded: true });
 
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -136,5 +162,40 @@ describe("App checkout flow", () => {
     expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
     expect(document.body.textContent).toContain("Siparişleriniz yükleniyor...");
     expect(document.body.style.overflow).toBe("hidden");
+  });
+
+  it("records each recommendation impression and add-to-cart event once per session key", async () => {
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify([product]));
+    apiMocks.getRecommendations.mockResolvedValue({
+      recommendations: [recommendation]
+    });
+
+    await renderApp();
+    await act(async () => {});
+
+    expect(apiMocks.recordRecommendationEvent).toHaveBeenCalledTimes(1);
+    expect(apiMocks.recordRecommendationEvent.mock.calls[0][0]).toMatchObject({
+      event_type: "impression",
+      rule_id: 12,
+      source_product_id: 1,
+      recommended_product_id: 2
+    });
+
+    await act(async () => {
+      root.render(<App />);
+    });
+
+    expect(apiMocks.recordRecommendationEvent).toHaveBeenCalledTimes(1);
+
+    const recommendationButton = container.querySelector(".recommendation-button");
+    act(() => {
+      recommendationButton.click();
+      recommendationButton.click();
+    });
+
+    const addToCartEvents = apiMocks.recordRecommendationEvent.mock.calls.filter(
+      ([event]) => event.event_type === "add_to_cart"
+    );
+    expect(addToCartEvents).toHaveLength(1);
   });
 });

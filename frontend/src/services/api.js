@@ -73,7 +73,14 @@ export function getOrderDetail(orderId, userId, options = {}) {
 }
 
 export function getAnalyticsDashboard(
-  { topProductLimit = 10, ruleLimit = 10, days = 30 } = {},
+  {
+    topProductLimit = 10,
+    ruleLimit = 10,
+    days = 30,
+    period = "last_30_days",
+    startDate,
+    endDate
+  } = {},
   options = {}
 ) {
   return request("/admin/analytics/dashboard", {
@@ -82,13 +89,26 @@ export function getAnalyticsDashboard(
     params: {
       top_product_limit: topProductLimit,
       rule_limit: ruleLimit,
-      days
+      days,
+      period,
+      start_date: startDate,
+      end_date: endDate
     }
   });
 }
 
-export function getAnalyticsDashboardStreamUrl({ days = 30 } = {}) {
-  return buildApiUrl(API_BASE_URL, "/admin/analytics/dashboard/stream", { days });
+export function getAnalyticsDashboardStreamUrl({
+  days = 30,
+  period = "last_30_days",
+  startDate,
+  endDate
+} = {}) {
+  return buildApiUrl(API_BASE_URL, "/admin/analytics/dashboard/stream", {
+    days,
+    period,
+    start_date: startDate,
+    end_date: endDate
+  });
 }
 
 export function getAssociationRulesPage({
@@ -193,5 +213,13 @@ export function getRecommendations(basketProductIds, limit = 5, options = {}) {
       basket_product_ids: getUniqueValues(basketProductIds),
       limit
     }
+  });
+}
+
+export function recordRecommendationEvent(eventData, options = {}) {
+  return request("/recommendation-events", {
+    ...options,
+    method: "POST",
+    body: eventData
   });
 }

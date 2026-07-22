@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from src.analytics_service import AnalyticsService
 from src.db_helper import EMarketDBHelper
 
 
@@ -24,6 +25,119 @@ def test_summary_matches_temporary_database_health(client: TestClient) -> None:
         summary["total_revenue"] / summary["total_orders"],
         2,
     )
+
+
+def test_limited_sample_rule_is_not_marked_as_strongest() -> None:
+    service = AnalyticsService.__new__(AnalyticsService)
+
+    rules = service._mark_strongest_rule([
+        {
+            "rule_id": 1,
+            "confidence": 1.0,
+            "lift": 5.0,
+            "support": 0.03,
+            "calculation_count": 1,
+        },
+        {
+            "rule_id": 2,
+            "confidence": 1.0,
+            "lift": 3.0,
+            "support": 0.099,
+            "calculation_count": 56,
+        },
+    ])
+
+    assert rules[0]["is_strongest"] is False
+    assert rules[1]["is_strongest"] is True
+
+
+def test_no_rule_is_strongest_when_all_samples_are_limited() -> None:
+    service = AnalyticsService.__new__(AnalyticsService)
+
+    rules = service._mark_strongest_rule([
+        {
+            "rule_id": 1,
+            "confidence": 1.0,
+            "lift": 5.0,
+            "support": 0.03,
+            "calculation_count": 1,
+        },
+        {
+            "rule_id": 2,
+            "confidence": 0.99,
+            "lift": 4.0,
+            "support": 0.04,
+            "calculation_count": 2,
+        },
+    ])
+
+    assert all(rule["is_strongest"] is False for rule in rules)
+
+
+def test_period_metrics_use_selected_period_totals_and_comparisons() -> None:
+    service = AnalyticsService.__new__(AnalyticsService)
+
+    def fake_daily_sales(days, start_date=None, end_date=None):
+        if start_date == "2026-06-01":
+            return [
+                {"date": "2026-06-01", "order_count": 2, "total_revenue": 100.0},
+                {"date": "2026-06-02", "order_count": 0, "total_revenue": 0.0},
+            ]
+        return [
+            {"date": "2026-07-01", "order_count": 3, "total_revenue": 150.0},
+            {"date": "2026-07-02", "order_count": 1, "total_revenue": 50.0},
+        ]
+
+    service.get_daily_sales = fake_daily_sales
+
+    metrics = service.get_dashboard_period_metrics(
+        days=2,
+        start_date="2026-07-01",
+        end_date="2026-07-02",
+        previous_start_date="2026-06-01",
+        previous_end_date="2026-06-02",
+    )
+
+    assert metrics["selected_period_orders"] == 4
+    assert metrics["selected_period_revenue"] == 200.0
+    assert metrics["active_day_count"] == 2
+    assert metrics["period_day_count"] == 2
+    assert metrics["comparisons"]["selected_period_orders"] == {
+        "status": "increase",
+        "change_percent": 100.0,
+    }
+    assert metrics["comparisons"]["selected_period_revenue"] == {
+        "status": "increase",
+        "change_percent": 100.0,
+    }
+
+
+def test_comparison_handles_zero_previous_without_infinity() -> None:
+    assert AnalyticsService._format_comparison(5, 0) == {
+        "status": "no_previous",
+        "change_percent": None,
+    }
+    assert AnalyticsService._format_comparison(0, 0) == {
+        "status": "same",
+        "change_percent": None,
+    }
+
+
+def test_resolve_period_all_time_uses_first_order_date() -> None:
+    class FakeRepository:
+        def get_order_date_range(self):
+            return {
+                "first_order_date": "2026-07-01",
+                "last_order_date": "2026-07-05",
+                "total_orders": 5,
+            }
+
+    service = AnalyticsService(FakeRepository())
+    period = service.resolve_period("all_time")
+
+    assert period["start_date"] == "2026-07-01"
+    assert period["previous_start_date"] is None
+    assert period["previous_end_date"] is None
 
 
 def test_top_products_are_sorted(client: TestClient) -> None:
@@ -196,6 +310,7 @@ def test_dashboard_contains_all_sections(client: TestClient) -> None:
         "category_sales",
         "daily_sales",
         "strongest_rules",
+        "recommendation_impact",
     }
     summary = response.json()["summary"]
     assert {
@@ -205,14 +320,26 @@ def test_dashboard_contains_all_sections(client: TestClient) -> None:
         "most_recommended_product",
         "total_association_rules",
         "active_rule_count",
+        "comparisons",
     }.issubset(summary)
     period_metrics = response.json()["period_metrics"]
     assert {
-        "last_7_day_orders",
-        "last_30_day_orders",
+        "selected_period_orders",
+        "selected_period_revenue",
         "daily_average_orders",
         "daily_average_revenue",
+        "active_day_count",
+        "period_day_count",
+        "comparisons",
     }.issubset(period_metrics)
+    assert {
+        "impressions",
+        "add_to_cart",
+        "purchases",
+        "recommendation_revenue",
+        "add_to_cart_rate",
+        "purchase_rate",
+    }.issubset(response.json()["recommendation_impact"])
     assert response.json()["top_product_pairs"]
 
 

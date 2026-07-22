@@ -22,6 +22,8 @@ function BasketSidebar({
   onClearCart,
   onCheckout,
   onDismissCheckout,
+  onRecommendationImpression,
+  onRecommendationAddToCart,
   panelRef
 }) {
   const recommendedProduct = useMemo(() => {
@@ -67,6 +69,8 @@ function BasketSidebar({
         hasCartItems={cart.length > 0}
         isAlreadyInCart={recommendedProductInCart}
         onAddToCart={onAddToCart}
+        onRecommendationImpression={onRecommendationImpression}
+        onRecommendationAddToCart={onRecommendationAddToCart}
       />
     </aside>
   );

@@ -39,10 +39,13 @@ const data = {
     most_recommended_product: null
   },
   period_metrics: {
-    last_7_day_orders: 1,
-    last_30_day_orders: 1,
+    selected_period_orders: 1,
+    selected_period_revenue: 10,
     daily_average_orders: 0.03,
-    daily_average_revenue: 0.33
+    daily_average_revenue: 0.33,
+    active_day_count: 1,
+    period_day_count: 30,
+    comparisons: {}
   },
   top_product_pairs: [],
   top_products: [], category_sales: [], daily_sales: [], strongest_rules: []

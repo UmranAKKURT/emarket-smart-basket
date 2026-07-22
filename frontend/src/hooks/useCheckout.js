@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from "react";
 import { createOrder } from "../services/api.js";
 import { toOrderItems } from "../utils/cart.js";
 
-export function useCheckout(cart, clearCart, userId) {
+export function useCheckout(cart, clearCart, userId, getRecommendationEventKeys) {
   const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState(null);
   const [checkoutResult, setCheckoutResult] = useState(null);
@@ -21,10 +21,17 @@ export function useCheckout(cart, clearCart, userId) {
     setCheckoutResult(null);
 
     try {
-      const result = await createOrder({
+      const recommendationEventKeys = getRecommendationEventKeys?.() ?? [];
+      const orderPayload = {
         user_id: userId,
         items: toOrderItems(cart)
-      });
+      };
+
+      if (recommendationEventKeys.length > 0) {
+        orderPayload.recommendation_event_keys = recommendationEventKeys;
+      }
+
+      const result = await createOrder(orderPayload);
       setCheckoutResult(result);
       clearCart();
     } catch (exception) {
@@ -36,7 +43,7 @@ export function useCheckout(cart, clearCart, userId) {
       checkoutInFlightRef.current = false;
       setIsCheckoutLoading(false);
     }
-  }, [cart, clearCart, userId]);
+  }, [cart, clearCart, getRecommendationEventKeys, userId]);
 
   const dismissCheckoutResult = useCallback(() => {
     setCheckoutError(null);
@@ -51,4 +58,3 @@ export function useCheckout(cart, clearCart, userId) {
     dismissCheckoutResult
   };
 }
-

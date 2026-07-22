@@ -49,6 +49,7 @@ class OrderItemRequest(BaseModel):
 class CreateOrderRequest(BaseModel):
     user_id: int = Field(ge=MIN_IDENTIFIER)
     items: list[OrderItemRequest] = Field(min_length=1)
+    recommendation_event_keys: list[str] = Field(default_factory=list, max_length=50)
 
 
 class OrderItemResponse(BaseModel):
@@ -102,6 +103,11 @@ class RecommendedProductSummaryResponse(BaseModel):
     recommendation_count: int
 
 
+class ComparisonResponse(BaseModel):
+    status: str
+    change_percent: float | None = None
+
+
 class AnalyticsSummaryResponse(BaseModel):
     total_orders: int
     total_revenue: float
@@ -114,6 +120,7 @@ class AnalyticsSummaryResponse(BaseModel):
     active_rule_count: int
     last_order_at: str | None
     most_recommended_product: RecommendedProductSummaryResponse | None
+    comparisons: dict[str, ComparisonResponse] = Field(default_factory=dict)
 
 
 class TopProductResponse(BaseModel):
@@ -139,10 +146,13 @@ class TopProductPairResponse(BaseModel):
 
 
 class DashboardPeriodMetricsResponse(BaseModel):
-    last_7_day_orders: int
-    last_30_day_orders: int
+    selected_period_orders: int
+    selected_period_revenue: float
     daily_average_orders: float
     daily_average_revenue: float
+    active_day_count: int
+    period_day_count: int
+    comparisons: dict[str, ComparisonResponse] = Field(default_factory=dict)
 
 
 class CategorySalesResponse(BaseModel):
@@ -176,6 +186,7 @@ class StrongRuleResponse(BaseModel):
     updated_at: str | None = None
     calculation_count: int = 1
     is_active: bool = True
+    is_strongest: bool = False
 
 
 class AssociationRulePageResponse(BaseModel):
@@ -192,6 +203,7 @@ class AssociationRulePageResponse(BaseModel):
 class AnalyticsDashboardResponse(BaseModel):
     summary: AnalyticsSummaryResponse
     period_metrics: DashboardPeriodMetricsResponse
+    recommendation_impact: RecommendationImpactResponse
     top_products: list[TopProductResponse]
     top_product_pairs: list[TopProductPairResponse]
     category_sales: list[CategorySalesResponse]
@@ -254,6 +266,7 @@ class RecommendationResponse(BaseModel):
 
     source_product_id: int
     source_product_name: str
+    rule_id: int
 
     recommended_product_id: int
     recommended_product_name: str
@@ -280,6 +293,30 @@ class RecommendationListResponse(BaseModel):
     basket_product_ids: list[int]
     recommendation_count: int
     recommendations: list[RecommendationResponse]
+
+
+class RecommendationEventRequest(BaseModel):
+    event_key: str = Field(min_length=8, max_length=180)
+    session_id: str = Field(min_length=8, max_length=120)
+    user_id: int | None = Field(default=None, ge=MIN_IDENTIFIER)
+    rule_id: int = Field(ge=MIN_IDENTIFIER)
+    source_product_id: int = Field(ge=MIN_IDENTIFIER)
+    recommended_product_id: int = Field(ge=MIN_IDENTIFIER)
+    event_type: str = Field(pattern="^(impression|add_to_cart|purchase)$")
+    order_id: int | None = Field(default=None, ge=MIN_IDENTIFIER)
+
+
+class RecommendationEventResponse(BaseModel):
+    recorded: bool
+
+
+class RecommendationImpactResponse(BaseModel):
+    impressions: int = 0
+    add_to_cart: int = 0
+    purchases: int = 0
+    recommendation_revenue: float = 0.0
+    add_to_cart_rate: float = 0.0
+    purchase_rate: float = 0.0
 
 
 class RuleRebuildResponse(BaseModel):

@@ -91,6 +91,7 @@ class Recommendation:
     confidence: float
     lift: float
     context_message: str
+    rule_id: int = 0
     score: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
@@ -362,6 +363,7 @@ class RecommendationEngine:
         lift = float(rule["lift"])
 
         return Recommendation(
+            rule_id=int(rule.get("id") or rule.get("rule_id") or 0),
             source_product_id=int(rule["antecedent_product_id"]),
             source_product_name=str(rule["antecedent_name"]),
             recommended_product_id=int(rule["consequent_product_id"]),

@@ -22,13 +22,30 @@ const dashboard = {
       product_name: "Ezine Peyniri",
       emoji: "🧀",
       recommendation_count: 3
-    }
+    },
+    comparisons: {}
   },
   period_metrics: {
-    last_7_day_orders: 8,
-    last_30_day_orders: 22,
+    selected_period_orders: 22,
+    selected_period_revenue: 4520.75,
     daily_average_orders: 0.73,
-    daily_average_revenue: 150.69
+    daily_average_revenue: 150.69,
+    active_day_count: 5,
+    period_day_count: 30,
+    comparisons: {
+      selected_period_orders: { status: "increase", change_percent: 12.4 },
+      selected_period_revenue: { status: "no_previous", change_percent: null },
+      daily_average_orders: { status: "same", change_percent: 0 },
+      daily_average_revenue: { status: "decrease", change_percent: 3.1 }
+    }
+  },
+  recommendation_impact: {
+    impressions: 12,
+    add_to_cart: 3,
+    purchases: 1,
+    recommendation_revenue: 89.5,
+    add_to_cart_rate: 0.25,
+    purchase_rate: 0.083
   },
   top_product_pairs: [
     {
@@ -81,6 +98,8 @@ const dashboard = {
       confidence: 0.75,
       lift: 1.2,
       support: 0.25,
+      calculation_count: 4,
+      is_strongest: true,
       context_message: "Birlikte tercih ediliyor."
     }
   ]
@@ -109,7 +128,8 @@ describe("AdminDashboard", () => {
           loading={false}
           error={null}
           days={30}
-          onDaysChange={() => {}}
+          periodFilter={{ period: "last_30_days", startDate: "", endDate: "" }}
+          onPeriodFilterChange={() => {}}
           onRetry={() => {}}
           onClose={() => {}}
           {...props}
@@ -145,7 +165,7 @@ describe("AdminDashboard", () => {
     expect(container.textContent).toContain("Toplam Sipariş");
     expect(container.textContent).toContain("Toplam Ciro");
     expect(container.textContent).toContain("Toplam Birliktelik Kuralı");
-    expect(container.textContent).toContain("Aktif Rule Sayısı");
+    expect(container.textContent).toContain("Aktif Kural Sayısı");
     expect(container.textContent).toContain("Toplam Satılan Ürün");
     expect(container.textContent).toContain("Toplam Ürün");
     expect(container.textContent).toContain("Toplam Kategori");
@@ -153,9 +173,16 @@ describe("AdminDashboard", () => {
     expect(container.textContent).toContain("En Çok Önerilen Ürün");
     expect(container.textContent).toContain("Ortalama Sepet Tutarı");
     expect(container.textContent).toContain("Son Sipariş Tarihi");
+    expect(container.textContent).toContain("Dönem Seçimi");
+    expect(container.textContent).toContain("Performans Takibi");
+    expect(container.textContent).toContain("Öneri kaynaklı ciro");
     expect(container.textContent).toContain("Yeni Analizler");
-    expect(container.textContent).toContain("Son 7 Gün Sipariş");
-    expect(container.textContent).toContain("Son 30 Gün Sipariş");
+    expect(container.textContent).not.toContain("Son 7 Gün Sipariş");
+    expect(container.textContent).not.toContain("Son 30 Gün Sipariş");
+    expect(container.textContent).toContain("Seçili Dönem Sipariş");
+    expect(container.textContent).toContain("Seçili Dönem Ciro");
+    expect(container.textContent).toContain("Önceki döneme göre ↑ %12,4");
+    expect(container.textContent).toContain("Önceki dönemde sipariş yok");
     expect(container.textContent).toContain("Günlük Ortalama Sipariş");
     expect(container.textContent).toContain("Günlük Ortalama Ciro");
     expect(container.textContent).toContain("En Çok Birlikte Satılan Ürünler");
@@ -163,9 +190,7 @@ describe("AdminDashboard", () => {
     expect(container.textContent).toContain("Kategori Bazında Ciro Dağılımı");
     expect(container.textContent).toContain("Yüzdeler ciro payını gösterir");
     expect(container.textContent).toContain("Günlük Sipariş Sayısı");
-    expect(container.textContent).toContain(
-      "En Güçlü Birliktelik Kuralları"
-    );
+    expect(container.textContent).toContain("En Güçlü Birliktelik Kuralları");
 
     act(() => {
       Array.from(container.querySelectorAll("button"))
@@ -175,16 +200,33 @@ describe("AdminDashboard", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("requests fresh data when the period changes", () => {
-    const onDaysChange = vi.fn();
-    render({ dashboard, onDaysChange });
-    const select = container.querySelector("select");
+  it("requests fresh data when the global period changes", () => {
+    const onPeriodFilterChange = vi.fn();
+    render({ dashboard, onPeriodFilterChange });
+    const select = container.querySelector(".admin-period-filter select");
 
     act(() => {
-      select.value = "90";
+      select.value = "last_7_days";
       select.dispatchEvent(new Event("change", { bubbles: true }));
     });
 
-    expect(onDaysChange).toHaveBeenCalledWith(90);
+    expect(onPeriodFilterChange).toHaveBeenCalledWith({ period: "last_7_days" });
+  });
+
+  it("explains that all-time period does not use previous-period comparison", () => {
+    render({
+      dashboard: {
+        ...dashboard,
+        period_metrics: {
+          ...dashboard.period_metrics,
+          comparisons: {}
+        }
+      },
+      periodFilter: { period: "all_time", startDate: "", endDate: "" }
+    });
+
+    expect(container.textContent).toContain(
+      "Tüm zamanlar için dönem karşılaştırması uygulanmaz"
+    );
   });
 });

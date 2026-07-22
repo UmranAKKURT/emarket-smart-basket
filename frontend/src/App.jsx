@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import BasketSidebar from "./components/BasketSidebar.jsx";
 import CatalogSection from "./components/CatalogSection.jsx";
@@ -15,14 +15,27 @@ import { useCheckout } from "./hooks/useCheckout.js";
 import { useOrderHistory } from "./hooks/useOrderHistory.js";
 import { useRecommendations } from "./hooks/useRecommendations.js";
 import { useToast } from "./hooks/useToast.js";
+import { recordRecommendationEvent } from "./services/api.js";
+import { getSessionId } from "./utils/session.js";
 
 function App() {
   const catalog = useCatalog();
   const cartState = useCart();
+  const [recommendationEventKeys, setRecommendationEventKeys] = useState([]);
+  const sessionIdRef = useRef(getSessionId());
+  const trackedImpressionEventsRef = useRef(new Set());
+  const trackedAddToCartEventsRef = useRef(new Set());
+
+  const getRecommendationEventKeys = useCallback(
+    () => recommendationEventKeys,
+    [recommendationEventKeys]
+  );
+
   const checkout = useCheckout(
     cartState.cart,
     cartState.clearCart,
-    DEMO_USER_ID
+    DEMO_USER_ID,
+    getRecommendationEventKeys
   );
   const orderHistory = useOrderHistory(DEMO_USER_ID);
   const recommendationRefreshKey = useMemo(
@@ -38,6 +51,64 @@ function App() {
   );
   const { showToast } = useToast();
   const basketRef = useRef(null);
+
+  const buildRecommendationEvent = useCallback((recommendation, eventType) => ({
+    event_key: [
+      sessionIdRef.current,
+      recommendation.rule_id,
+      recommendation.source_product_id,
+      recommendation.recommended_product_id,
+      eventType
+    ].join(":"),
+    session_id: sessionIdRef.current,
+    user_id: DEMO_USER_ID,
+    rule_id: recommendation.rule_id,
+    source_product_id: recommendation.source_product_id,
+    recommended_product_id: recommendation.recommended_product_id,
+    event_type: eventType
+  }), []);
+
+  const trackRecommendationEvent = useCallback((recommendation, eventType) => {
+    if (!recommendation?.rule_id) {
+      return null;
+    }
+
+    const event = buildRecommendationEvent(recommendation, eventType);
+    recordRecommendationEvent(event).catch((exception) => {
+      console.warn("Öneri metrik olayı kaydedilemedi:", exception);
+    });
+
+    return event.event_key;
+  }, [buildRecommendationEvent]);
+
+  const handleRecommendationImpression = useCallback((recommendation) => {
+    if (!recommendation?.rule_id) {
+      return;
+    }
+
+    const eventKey = buildRecommendationEvent(recommendation, "impression").event_key;
+
+    if (trackedImpressionEventsRef.current.has(eventKey)) {
+      return;
+    }
+
+    trackedImpressionEventsRef.current.add(eventKey);
+    trackRecommendationEvent(recommendation, "impression");
+  }, [buildRecommendationEvent, trackRecommendationEvent]);
+
+  const handleRecommendationAddToCart = useCallback((recommendation) => {
+    const eventKey = buildRecommendationEvent(recommendation, "add_to_cart").event_key;
+
+    if (trackedAddToCartEventsRef.current.has(eventKey)) {
+      return;
+    }
+
+    trackedAddToCartEventsRef.current.add(eventKey);
+    trackRecommendationEvent(recommendation, "add_to_cart");
+    setRecommendationEventKeys((currentKeys) => (
+      currentKeys.includes(eventKey) ? currentKeys : [...currentKeys, eventKey]
+    ));
+  }, [buildRecommendationEvent, trackRecommendationEvent]);
 
   const scrollToBasket = useCallback(() => {
     const basketElement = basketRef.current;
@@ -87,6 +158,8 @@ function App() {
 
   const handleClearCart = useCallback(() => {
     cartState.clearCart();
+    setRecommendationEventKeys([]);
+    trackedAddToCartEventsRef.current.clear();
     showToast({
       type: "info",
       title: "Sepet temizlendi",
@@ -96,6 +169,8 @@ function App() {
 
   useEffect(() => {
     if (checkout.checkoutResult) {
+      setRecommendationEventKeys([]);
+      trackedAddToCartEventsRef.current.clear();
       showToast({
         type: "success",
         title: "Siparişiniz alındı",
@@ -174,6 +249,8 @@ function App() {
           onClearCart={handleClearCart}
           onCheckout={checkout.checkout}
           onDismissCheckout={checkout.dismissCheckoutResult}
+          onRecommendationImpression={handleRecommendationImpression}
+          onRecommendationAddToCart={handleRecommendationAddToCart}
           panelRef={basketRef}
         />
       </main>

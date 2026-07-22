@@ -11,14 +11,47 @@ class AnalyticsRepository:
     def __init__(self, db_helper: EMarketDBHelper) -> None:
         self.db_helper = db_helper
 
+    def get_order_date_range(self) -> dict[str, Any]:
+        with self.db_helper.get_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    MIN(date(created_at)) AS first_order_date,
+                    MAX(date(created_at)) AS last_order_date,
+                    COUNT(*) AS total_orders
+                FROM orders;
+                """
+            ).fetchone()
+
+        return {
+            "first_order_date": row["first_order_date"],
+            "last_order_date": row["last_order_date"],
+            "total_orders": int(row["total_orders"]),
+        }
+
     @staticmethod
     def _rows_to_dicts(rows: list[Any]) -> list[dict[str, Any]]:
         return [dict(row) for row in rows]
 
-    def get_summary(self) -> dict[str, Any]:
+    @staticmethod
+    def _date_filter(alias: str = "o") -> str:
+        return (
+            f"WHERE (? IS NULL OR date({alias}.created_at) >= date(?)) "
+            f"AND (? IS NULL OR date({alias}.created_at) <= date(?))"
+        )
+
+    @staticmethod
+    def _date_params(start_date: str | None, end_date: str | None) -> tuple[Any, ...]:
+        return (start_date, start_date, end_date, end_date)
+
+    def get_summary(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
         with self.db_helper.get_connection() as connection:
             row = connection.execute(
-                """
+                f"""
                 SELECT
                     COUNT(DISTINCT o.id) AS total_orders,
                     COALESCE(SUM(
@@ -38,8 +71,10 @@ class AnalyticsRepository:
                 LEFT JOIN order_items AS oi
                     ON oi.order_id = o.id
                 LEFT JOIN products AS p
-                    ON p.id = oi.product_id;
-                """
+                    ON p.id = oi.product_id
+                {self._date_filter("o")};
+                """,
+                self._date_params(start_date, end_date),
             ).fetchone()
 
         total_orders = int(row["total_orders"])
@@ -85,10 +120,15 @@ class AnalyticsRepository:
 
         return dict(row) if row is not None else None
 
-    def get_top_products(self, limit: int = 5) -> list[dict[str, Any]]:
+    def get_top_products(
+        self,
+        limit: int = 5,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> list[dict[str, Any]]:
         with self.db_helper.get_connection() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT
                     p.id AS product_id,
                     p.name AS product_name,
@@ -102,6 +142,9 @@ class AnalyticsRepository:
                 FROM order_items AS oi
                 INNER JOIN products AS p
                     ON p.id = oi.product_id
+                INNER JOIN orders AS o
+                    ON o.id = oi.order_id
+                {self._date_filter("o")}
                 GROUP BY p.id, p.name, p.emoji, p.category
                 ORDER BY
                     total_quantity DESC,
@@ -109,20 +152,26 @@ class AnalyticsRepository:
                     product_name ASC
                 LIMIT ?;
                 """,
-                (limit,),
+                (*self._date_params(start_date, end_date), limit),
             ).fetchall()
 
         return self._rows_to_dicts(rows)
 
-    def get_top_product_pairs(self, limit: int = 10) -> list[dict[str, Any]]:
+    def get_top_product_pairs(
+        self,
+        limit: int = 10,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> list[dict[str, Any]]:
         """En sık aynı siparişte birlikte görülen ürün çiftlerini getirir."""
 
         with self.db_helper.get_connection() as connection:
             rows = connection.execute(
-                """
+                f"""
                 WITH total_orders AS (
                     SELECT COUNT(*) AS value
                     FROM orders
+                    {self._date_filter("orders")}
                 ),
                 pairs AS (
                     SELECT
@@ -135,6 +184,9 @@ class AnalyticsRepository:
                     INNER JOIN order_items AS right_item
                         ON right_item.order_id = left_item.order_id
                         AND right_item.product_id > left_item.product_id
+                    INNER JOIN orders AS o
+                        ON o.id = left_item.order_id
+                    {self._date_filter("o")}
                     GROUP BY left_item.product_id, right_item.product_id
                 )
                 SELECT
@@ -163,15 +215,23 @@ class AnalyticsRepository:
                     second_product.name ASC
                 LIMIT ?;
                 """,
-                (limit,),
+                (
+                    *self._date_params(start_date, end_date),
+                    *self._date_params(start_date, end_date),
+                    limit,
+                ),
             ).fetchall()
 
         return self._rows_to_dicts(rows)
 
-    def get_category_sales(self) -> list[dict[str, Any]]:
+    def get_category_sales(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> list[dict[str, Any]]:
         with self.db_helper.get_connection() as connection:
             rows = connection.execute(
-                """
+                f"""
                 WITH category_totals AS (
                     SELECT
                         p.category,
@@ -183,6 +243,9 @@ class AnalyticsRepository:
                     FROM order_items AS oi
                     INNER JOIN products AS p
                         ON p.id = oi.product_id
+                    INNER JOIN orders AS o
+                        ON o.id = oi.order_id
+                    {self._date_filter("o")}
                     GROUP BY p.category
                 ),
                 grand_total AS (
@@ -201,12 +264,18 @@ class AnalyticsRepository:
                 FROM category_totals
                 CROSS JOIN grand_total
                 ORDER BY category_totals.total_revenue DESC;
-                """
+                """,
+                self._date_params(start_date, end_date),
             ).fetchall()
 
         return self._rows_to_dicts(rows)
 
-    def get_daily_sales(self, days: int = 30) -> list[dict[str, Any]]:
+    def get_daily_sales(
+        self,
+        days: int = 30,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> list[dict[str, Any]]:
         modifier = f"-{days - 1} days"
 
         with self.db_helper.get_connection() as connection:
@@ -224,12 +293,12 @@ class AnalyticsRepository:
                     ON oi.order_id = o.id
                 INNER JOIN products AS p
                     ON p.id = oi.product_id
-                WHERE date(o.created_at) >= date('now', ?)
-                  AND date(o.created_at) <= date('now')
+                WHERE date(o.created_at) >= COALESCE(date(?), date('now', ?))
+                  AND date(o.created_at) <= COALESCE(date(?), date('now'))
                 GROUP BY date(o.created_at)
                 ORDER BY date(o.created_at) ASC;
                 """,
-                (modifier,),
+                (start_date, modifier, end_date),
             ).fetchall()
 
         return self._rows_to_dicts(rows)

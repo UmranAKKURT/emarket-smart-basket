@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { formatCurrency } from "../utils/currency.js";
 import {
@@ -16,9 +16,34 @@ function RecommendationBox({
   error,
   hasCartItems,
   isAlreadyInCart,
-  onAddToCart
+  onAddToCart,
+  onRecommendationImpression,
+  onRecommendationAddToCart
 }) {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const impressionKeysRef = useRef(new Set());
+
+  useEffect(() => {
+    recommendations.forEach((item) => {
+      const impressionKey = `${item.rule_id}:${item.source_product_id}:${item.recommended_product_id}:impression`;
+
+      if (impressionKeysRef.current.has(impressionKey)) {
+        return;
+      }
+
+      impressionKeysRef.current.add(impressionKey);
+      onRecommendationImpression?.(item);
+    });
+  }, [onRecommendationImpression, recommendations]);
+
+  const addRecommendedProduct = (rule, product) => {
+    if (!product) {
+      return;
+    }
+
+    onRecommendationAddToCart?.(rule);
+    onAddToCart(product);
+  };
 
   if (!hasCartItems) {
     return (
@@ -125,7 +150,7 @@ function RecommendationBox({
                 type="button"
                 key={`${item.source_product_id}-${item.recommended_product_id}`}
                 disabled={!product}
-                onClick={() => product && onAddToCart(product)}
+                onClick={() => addRecommendedProduct(item, product)}
               >
                 <span>{index + 1}</span>
                 <span>{item.recommended_product_emoji}</span>
@@ -143,7 +168,7 @@ function RecommendationBox({
         className="recommendation-button"
         type="button"
         disabled={!canAddRecommendation}
-        onClick={() => onAddToCart(recommendedProduct)}
+        onClick={() => addRecommendedProduct(recommendation, recommendedProduct)}
       >
         {canAddRecommendation ? "Sepete Ekle" : "Ürün bulunamadı"}
       </button>

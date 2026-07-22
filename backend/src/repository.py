@@ -1004,6 +1004,140 @@ class AssociationRuleRepository(BaseRepository):
         return int(row["total"])
 
 
+class RecommendationEventRepository(BaseRepository):
+    """Öneri gösterim, sepete ekleme ve satın alma eventlerini yönetir."""
+
+    def record_event(self, event: dict[str, Any]) -> bool:
+        with self.db_helper.get_connection() as connection:
+            cursor = connection.execute(
+                """
+                INSERT OR IGNORE INTO recommendation_events
+                    (
+                        event_key,
+                        session_id,
+                        user_id,
+                        rule_id,
+                        source_product_id,
+                        recommended_product_id,
+                        event_type,
+                        order_id,
+                        created_at
+                    )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    event["event_key"],
+                    event["session_id"],
+                    event.get("user_id"),
+                    event["rule_id"],
+                    event["source_product_id"],
+                    event["recommended_product_id"],
+                    event["event_type"],
+                    event.get("order_id"),
+                    datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                ),
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+
+    def mark_purchases_for_order(self, order_id: int, event_keys: list[str]) -> int:
+        if not event_keys:
+            return 0
+
+        with self.db_helper.get_connection() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT *
+                FROM recommendation_events
+                WHERE event_key IN ({", ".join("?" for _ in event_keys)})
+                    AND event_type = 'add_to_cart';
+                """,
+                tuple(event_keys),
+            ).fetchall()
+
+            created = 0
+            for row in rows:
+                purchase_key = f"{row['event_key']}:purchase:{order_id}"
+                cursor = connection.execute(
+                    """
+                    INSERT OR IGNORE INTO recommendation_events
+                        (
+                            event_key,
+                            session_id,
+                            user_id,
+                            rule_id,
+                            source_product_id,
+                            recommended_product_id,
+                            event_type,
+                            order_id,
+                            created_at
+                        )
+                    VALUES (?, ?, ?, ?, ?, ?, 'purchase', ?, ?);
+                    """,
+                    (
+                        purchase_key,
+                        row["session_id"],
+                        row["user_id"],
+                        row["rule_id"],
+                        row["source_product_id"],
+                        row["recommended_product_id"],
+                        order_id,
+                        datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    ),
+                )
+                created += cursor.rowcount
+
+            connection.commit()
+            return created
+
+    def get_impact_summary(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
+        with self.db_helper.get_connection() as connection:
+            counts = connection.execute(
+                """
+                SELECT
+                    SUM(CASE WHEN event_type = 'impression' THEN 1 ELSE 0 END) AS impressions,
+                    SUM(CASE WHEN event_type = 'add_to_cart' THEN 1 ELSE 0 END) AS add_to_cart,
+                    SUM(CASE WHEN event_type = 'purchase' THEN 1 ELSE 0 END) AS purchases
+                FROM recommendation_events
+                WHERE (? IS NULL OR date(created_at) >= date(?))
+                    AND (? IS NULL OR date(created_at) <= date(?));
+                """,
+                (start_date, start_date, end_date, end_date),
+            ).fetchone()
+
+            revenue = connection.execute(
+                """
+                SELECT COALESCE(SUM(COALESCE(oi.unit_price, p.price) * oi.quantity), 0) AS total
+                FROM recommendation_events AS re
+                INNER JOIN order_items AS oi
+                    ON oi.order_id = re.order_id
+                    AND oi.product_id = re.recommended_product_id
+                INNER JOIN products AS p
+                    ON p.id = oi.product_id
+                WHERE re.event_type = 'purchase'
+                    AND (? IS NULL OR date(re.created_at) >= date(?))
+                    AND (? IS NULL OR date(re.created_at) <= date(?));
+                """,
+                (start_date, start_date, end_date, end_date),
+            ).fetchone()
+
+        impressions = int(counts["impressions"] or 0)
+        add_to_cart = int(counts["add_to_cart"] or 0)
+        purchases = int(counts["purchases"] or 0)
+        return {
+            "impressions": impressions,
+            "add_to_cart": add_to_cart,
+            "purchases": purchases,
+            "recommendation_revenue": round(float(revenue["total"] or 0), 2),
+            "add_to_cart_rate": add_to_cart / impressions if impressions else 0.0,
+            "purchase_rate": purchases / impressions if impressions else 0.0,
+        }
+
+
 if __name__ == "__main__":
     db_helper = EMarketDBHelper()
 

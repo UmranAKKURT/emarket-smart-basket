@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import { normalizeSearchText } from "../utils/text.js";
 import {
   buildRuleExplanation,
-  compareRuleStrength,
   formatRulePercent,
   getRuleReliability
 } from "../utils/ruleMetrics.js";
@@ -216,13 +215,15 @@ function StrongRulesTable({
   const totalRules = isRemote ? remoteTotal : sourceRules.length;
 
   const strongestRuleId = useMemo(() => {
-    if (sourceRules.length === 0) {
-      return null;
+    const backendStrongestRule = sourceRules.find(
+      (rule) => rule.is_strongest === true
+    );
+
+    if (backendStrongestRule) {
+      return backendStrongestRule.rule_id;
     }
 
-    return sourceRules.reduce((strongest, rule) =>
-      compareRuleStrength(rule, strongest) > 0 ? rule : strongest
-    ).rule_id;
+    return null;
   }, [sourceRules]);
 
   const visibleRules = useMemo(() => {
