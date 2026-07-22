@@ -18,3 +18,5 @@ __pycache__/
 
 backend/.env
 frontend/.env
+
+*.lnk
